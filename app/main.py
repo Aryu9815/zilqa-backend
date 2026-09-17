@@ -24,7 +24,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("zelqa_backend")
 
-UPLOAD_DIR = Path("app/products")
+# UPLOAD_DIR = Path("app/products")
 
 
 @asynccontextmanager
@@ -76,11 +76,11 @@ app = FastAPI(
     ]
 )
 
-app.mount(
-    "/products",
-    StaticFiles(directory=str(UPLOAD_DIR)),
-    name="products"
-)
+# app.mount(
+#     "/products",
+#     StaticFiles(directory=str(UPLOAD_DIR)),
+#     name="products"
+# )
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
