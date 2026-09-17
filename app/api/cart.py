@@ -1,13 +1,38 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, status
 
-from app.core.dependencies import require_authenticated_user
-from app.schemas.cart import CartItemCreate, CartItemUpdate, CartResponse
+from app.core.dependencies import get_optional_current_user, require_authenticated_user
+from app.schemas.cart import (
+    ApplyCouponRequest,
+    CartItemCreate,
+    CartItemUpdate,
+    CartResponse,
+    LiveBillRequest,
+    LiveBillResponse,
+)
 from app.schemas.common import ResponseEnvelope
 from app.services.cart_service import cart_service
 
 router = APIRouter(prefix="/cart", tags=["Cart"])
+
+
+@router.post(
+    "/calculate-bill",
+    response_model=ResponseEnvelope[LiveBillResponse],
+    summary="Calculate live dynamic bill with offers, coupons, and delivery charges"
+)
+async def calculate_bill(
+    req: LiveBillRequest,
+    current_user: Optional[Dict[str, Any]] = Depends(get_optional_current_user)
+) -> ResponseEnvelope[LiveBillResponse]:
+    user_id = current_user["id"] if current_user else None
+    bill = await cart_service.calculate_live_bill(user_id=user_id, req=req)
+    return ResponseEnvelope(
+        success=True,
+        message="Live bill calculated successfully",
+        data=bill
+    )
 
 
 @router.get(
@@ -104,3 +129,62 @@ async def clear_cart(
         message="Cart cleared successfully",
         data=cart
     )
+
+
+@router.post(
+    "/coupon",
+    response_model=ResponseEnvelope[CartResponse],
+    summary="Apply coupon code to cart"
+)
+async def apply_coupon(
+    req: ApplyCouponRequest,
+    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+) -> ResponseEnvelope[CartResponse]:
+    cart = await cart_service.apply_coupon(
+        user_id=current_user["id"],
+        coupon_code=req.coupon_code
+    )
+    return ResponseEnvelope(
+        success=True,
+        message=f"Coupon '{req.coupon_code.strip().upper()}' applied successfully",
+        data=cart
+    )
+
+
+@router.post(
+    "/apply-coupon",
+    response_model=ResponseEnvelope[CartResponse],
+    summary="Apply coupon code to cart (alias)"
+)
+async def apply_coupon_alias(
+    req: ApplyCouponRequest,
+    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+) -> ResponseEnvelope[CartResponse]:
+    return await apply_coupon(req=req, current_user=current_user)
+
+
+@router.delete(
+    "/coupon",
+    response_model=ResponseEnvelope[CartResponse],
+    summary="Remove applied coupon from cart"
+)
+async def remove_coupon(
+    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+) -> ResponseEnvelope[CartResponse]:
+    cart = await cart_service.remove_coupon(user_id=current_user["id"])
+    return ResponseEnvelope(
+        success=True,
+        message="Coupon removed from cart successfully",
+        data=cart
+    )
+
+
+@router.delete(
+    "/remove-coupon",
+    response_model=ResponseEnvelope[CartResponse],
+    summary="Remove applied coupon from cart (alias)"
+)
+async def remove_coupon_alias(
+    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+) -> ResponseEnvelope[CartResponse]:
+    return await remove_coupon(current_user=current_user)

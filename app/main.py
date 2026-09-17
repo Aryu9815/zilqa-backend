@@ -2,11 +2,13 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pathlib import Path
 from fastapi.staticfiles import StaticFiles
+
 
 from app.api import health
 from app.api.router import api_router
@@ -20,9 +22,9 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
-logger = logging.getLogger("zilqa_backend")
+logger = logging.getLogger("zelqa_backend")
 
-UPLOAD_DIR = Path("app/uploads")
+UPLOAD_DIR = Path("app/products")
 
 
 @asynccontextmanager
@@ -63,7 +65,9 @@ app = FastAPI(
         {"name": "Countries", "description": "Country Management for Shipping & Address Selection"},
         {"name": "Categories", "description": "Product Category Management & Browsing"},
         {"name": "Products", "description": "Product Catalog, Search, Filtering & Admin CRUD"},
+        {"name": "Offers", "description": "Offers, Discounts, Coupons & Promotions (Public & Admin)"},
         {"name": "Cart", "description": "Shopping Cart & Live Subtotal Computation"},
+
         {"name": "Wishlist", "description": "Customer Wishlist Operations"},
         {"name": "Orders", "description": "Order Placement & Customer Order History"},
         {"name": "Admin Orders", "description": "Admin Order Fulfillment & Status Transitions"},
@@ -73,9 +77,9 @@ app = FastAPI(
 )
 
 app.mount(
-    "/uploads",
+    "/products",
     StaticFiles(directory=str(UPLOAD_DIR)),
-    name="uploads"
+    name="products"
 )
 # CORS Configuration
 app.add_middleware(
@@ -110,17 +114,19 @@ async def custom_api_exception_handler(request: Request, exc: APIException) -> J
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """Handle Pydantic request validation errors."""
-    logger.info(f"Validation error on {request.method} {request.url.path}: {exc.errors()}")
+    sanitized_errors = jsonable_encoder(exc.errors())
+    logger.info(f"Validation error on {request.method} {request.url.path}: {sanitized_errors}")
     error_payload = ErrorResponse(
         success=False,
         message="Request validation failed. Please check your input parameters.",
         error_code="VALIDATION_ERROR",
-        errors=exc.errors()
+        errors=sanitized_errors
     )
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content=error_payload.model_dump()
+        content=error_payload.model_dump(mode="json")
     )
+
 
 
 @app.exception_handler(HTTPException)

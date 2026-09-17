@@ -1,4 +1,4 @@
-﻿from decimal import Decimal
+from decimal import Decimal
 from typing import List, Optional
 from uuid import UUID
 
@@ -7,6 +7,7 @@ from app.repositories.category_repository import category_repository
 from app.repositories.product_repository import product_repository
 from app.schemas.common import PaginatedResponse
 from app.schemas.product import ProductCreate, ProductResponse, ProductSortBy, ProductUpdate
+from app.services.offer_service import offer_service
 from app.utils.helpers import calculate_pagination
 
 
@@ -41,7 +42,8 @@ class ProductService:
             sort_by=sort_by,
             is_active_only=is_active_only
         )
-        items = [ProductResponse.model_validate(dict(r)) for r in records]
+        enriched = await offer_service.enrich_product_records(records)
+        items = [ProductResponse.model_validate(r) for r in enriched]
         pagination = calculate_pagination(total=total, page=page, limit=limit)
         return PaginatedResponse(data=items, pagination=pagination)
 
@@ -49,7 +51,8 @@ class ProductService:
         record = await product_repository.get_by_id(product_id, is_active_only=is_active_only, include_deleted=False)
         if not record:
             raise NotFoundException(message="Product not found", error_code="PRODUCT_NOT_FOUND")
-        return ProductResponse.model_validate(dict(record))
+        enriched = await offer_service.enrich_single_product_record(record)
+        return ProductResponse.model_validate(enriched)
 
     async def get_related_products(self, product_id: UUID) -> List[ProductResponse]:
         product = await product_repository.get_by_id(product_id, is_active_only=True, include_deleted=False)
@@ -60,7 +63,8 @@ class ProductService:
         if related_ids:
             records = await product_repository.get_by_ids(related_ids, is_active_only=True, include_deleted=False)
             if records:
-                return [ProductResponse.model_validate(dict(r)) for r in records]
+                enriched = await offer_service.enrich_product_records(records)
+                return [ProductResponse.model_validate(r) for r in enriched]
 
         # Fallback: if there are no related products, use that product's first category products
         category_ids = product.get("category_ids") or []
@@ -74,7 +78,8 @@ class ProductService:
                 include_deleted=False
             )
             filtered = [r for r in cat_records if r["id"] != product_id]
-            return [ProductResponse.model_validate(dict(r)) for r in filtered]
+            enriched = await offer_service.enrich_product_records(filtered)
+            return [ProductResponse.model_validate(r) for r in enriched]
 
         return []
 
@@ -105,7 +110,8 @@ class ProductService:
         # Fetch with category names
         full_record = await product_repository.get_by_id(record["id"], is_active_only=False, include_deleted=False)
         assert full_record is not None
-        return ProductResponse.model_validate(dict(full_record))
+        enriched = await offer_service.enrich_single_product_record(full_record)
+        return ProductResponse.model_validate(enriched)
 
     async def update_product(self, product_id: UUID, product_in: ProductUpdate) -> ProductResponse:
         existing = await product_repository.get_by_id(product_id, is_active_only=False, include_deleted=False)
@@ -143,7 +149,9 @@ class ProductService:
         assert record is not None
         full_record = await product_repository.get_by_id(product_id, is_active_only=False, include_deleted=False)
         assert full_record is not None
-        return ProductResponse.model_validate(dict(full_record))
+        enriched = await offer_service.enrich_single_product_record(full_record)
+        return ProductResponse.model_validate(enriched)
+
 
     async def delete_product(self, product_id: UUID) -> None:
         deleted = await product_repository.delete(product_id, soft=True)

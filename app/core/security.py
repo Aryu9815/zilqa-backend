@@ -29,7 +29,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def create_access_token(
     subject: Union[str, Any],
-    role: str,
+    role: Optional[str] = None,
     expires_delta: Optional[timedelta] = None,
     additional_claims: Optional[Dict[str, Any]] = None
 ) -> str:
@@ -37,15 +37,18 @@ def create_access_token(
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        minutes = settings.ACCESS_TOKEN_EXPIRE_MINUTES if settings.ACCESS_TOKEN_EXPIRE_MINUTES > 0 else 60
+        expire = datetime.now(timezone.utc) + timedelta(minutes=minutes)
     
     to_encode: Dict[str, Any] = {
         "sub": str(subject),
-        "role": role,
         "type": "access",
         "exp": expire,
         "iat": datetime.now(timezone.utc)
     }
+    if role is not None:
+        to_encode["role"] = role
+
     if additional_claims:
         to_encode.update(additional_claims)
         

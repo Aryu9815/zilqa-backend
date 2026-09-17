@@ -35,7 +35,7 @@ A high-performance, asynchronous REST API for an e-commerce platform built with 
 ## Project Structure
 
 ```text
-zilqa-backend/
+zelqa-backend/
 ├── app/
 │   ├── main.py                          # FastAPI app entrypoint, lifespan, CORS & exception handlers
 │   │

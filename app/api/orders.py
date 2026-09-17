@@ -12,6 +12,9 @@ from app.schemas.order import (
     OrderStatusUpdate,
     PaymentStatus,
     PaymentStatusUpdate,
+    RazorpayOrderCreateRequest,
+    RazorpayOrderResponse,
+    RazorpayPaymentVerifyRequest,
 )
 from app.services.order_service import order_service
 
@@ -20,8 +23,44 @@ admin_router = APIRouter(prefix="/admin/orders", tags=["Admin Orders"])
 
 
 # =============================================================================
-# USER ORDER ENDPOINTS
+# USER ORDER & RAZORPAY CHECKOUT ENDPOINTS
 # =============================================================================
+
+@user_router.post(
+    "/create-razorpay-order",
+    response_model=ResponseEnvelope[RazorpayOrderResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Initialize a Razorpay order from user's shopping cart"
+)
+async def create_razorpay_order(
+    req: RazorpayOrderCreateRequest,
+    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+) -> ResponseEnvelope[RazorpayOrderResponse]:
+    rzp_order = await order_service.create_razorpay_order(current_user["id"], req)
+    return ResponseEnvelope(
+        success=True,
+        message="Razorpay order initialized successfully",
+        data=rzp_order
+    )
+
+
+@user_router.post(
+    "/verify-payment",
+    response_model=ResponseEnvelope[OrderResponse],
+    status_code=status.HTTP_201_CREATED,
+    summary="Verify Razorpay payment signature, create order with offer details, and clear cart"
+)
+async def verify_razorpay_payment(
+    req: RazorpayPaymentVerifyRequest,
+    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+) -> ResponseEnvelope[OrderResponse]:
+    order = await order_service.verify_and_complete_order(current_user["id"], req)
+    return ResponseEnvelope(
+        success=True,
+        message="Payment verified and order placed successfully",
+        data=order
+    )
+
 
 @user_router.post(
     "",

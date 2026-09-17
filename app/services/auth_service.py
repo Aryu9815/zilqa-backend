@@ -25,7 +25,7 @@ class AuthService:
         role = user_record["role"]
         mobile_number = user_record.get("mobile_number") if hasattr(user_record, "get") else user_record["mobile_number"] if "mobile_number" in user_record else None
 
-        access_token = create_access_token(subject=user_id, role=role)
+        access_token = create_access_token(subject=user_id)
         raw_refresh_token = generate_refresh_token()
         hashed_rf_token = hash_token(raw_refresh_token)
         expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)

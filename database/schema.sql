@@ -1,5 +1,5 @@
 -- =============================================================================
--- Zilqa Luxury Sterling Silver E-Commerce Database Schema
+-- zelqa Luxury Sterling Silver E-Commerce Database Schema
 -- =============================================================================
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -90,7 +90,18 @@ CREATE TABLE IF NOT EXISTS user_addresses (
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS carts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL UNIQUE,
+    coupon_code VARCHAR(100),
+    coupon_discount_type VARCHAR(20)
+        CHECK (coupon_discount_type IN ('percentage', 'fixed')),
+    coupon_discount_value NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    coupon_discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    subtotal NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    total_discount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    shipping_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
@@ -103,6 +114,15 @@ CREATE TABLE IF NOT EXISTS cart_items (
     cart_id UUID REFERENCES carts(id) ON DELETE CASCADE NOT NULL,
     product_id UUID REFERENCES products(id) ON DELETE CASCADE NOT NULL,
     quantity INTEGER DEFAULT 1 NOT NULL,
+    offer_id UUID REFERENCES offers(id) ON DELETE SET NULL,
+    unit_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    discount_type VARCHAR(20) CHECK (discount_type IN ('percentage', 'fixed')),
+    discount_value NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    final_unit_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    total_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT uq_cart_items_cart_product UNIQUE (cart_id, product_id)
@@ -115,6 +135,8 @@ CREATE TABLE IF NOT EXISTS wishlist_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
     product_id UUID REFERENCES products(id) ON DELETE CASCADE NOT NULL,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT uq_wishlist_items_user_product UNIQUE (user_id, product_id)
 );
@@ -124,33 +146,67 @@ CREATE TABLE IF NOT EXISTS wishlist_items (
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE RESTRICT NOT NULL,
-    address_id UUID REFERENCES user_addresses(id) ON DELETE SET NULL,
-    status VARCHAR(50) DEFAULT 'pending' NOT NULL,
-    payment_status VARCHAR(50) DEFAULT 'pending' NOT NULL,
-    payment_method VARCHAR(50) NOT NULL,
+    user_id UUID NOT NULL
+        REFERENCES users(id) ON DELETE RESTRICT,
+    status VARCHAR(30) NOT NULL DEFAULT 'pending'
+        CHECK (status IN (
+            'pending',
+            'confirmed',
+            'processing',
+            'shipped',
+            'delivered',
+            'cancelled',
+            'returned'
+        )),
+    payment_status VARCHAR(30) NOT NULL DEFAULT 'pending'
+        CHECK (payment_status IN (
+            'pending',
+            'paid',
+            'failed',
+            'refunded',
+            'partially_refunded'
+        )),
+    razorpay_order_id VARCHAR(255) UNIQUE,
+    razorpay_payment_id VARCHAR(255),
+    razorpay_signature TEXT,
     subtotal NUMERIC(12, 2) NOT NULL,
-    discount NUMERIC(12, 2) DEFAULT 0.00 NOT NULL,
-    shipping_fee NUMERIC(12, 2) DEFAULT 0.00 NOT NULL,
+    discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    shipping_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
     total_amount NUMERIC(12, 2) NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+    currency VARCHAR(10) NOT NULL DEFAULT 'INR',
+    coupon_code VARCHAR(100),
+    shipping_address JSONB NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-
 -- =============================================================================
 -- 10. ORDER ITEMS TABLE
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS order_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    order_id UUID REFERENCES orders(id) ON DELETE CASCADE NOT NULL,
-    product_id UUID REFERENCES products(id) ON DELETE SET NULL,
+    order_id UUID NOT NULL
+        REFERENCES orders(id) ON DELETE CASCADE,
+    product_id UUID
+        REFERENCES products(id) ON DELETE SET NULL,
     product_name VARCHAR(255) NOT NULL,
     product_image_url TEXT,
-    quantity INTEGER NOT NULL,
+    price NUMERIC(12, 2) NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1
+        CHECK (quantity > 0),
     unit_price NUMERIC(12, 2) NOT NULL,
-    subtotal NUMERIC(12, 2) NOT NULL
+    discount_type VARCHAR(20)
+        CHECK (discount_type IN ('percentage', 'fixed')),
+    discount_value NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    discount_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    final_unit_price NUMERIC(12, 2) NOT NULL,
+    total_price NUMERIC(12, 2) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-
 -- =============================================================================
 -- 11. REVIEWS TABLE
 -- =============================================================================
@@ -179,3 +235,39 @@ CREATE TABLE IF NOT EXISTS countries (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS offers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+
+    offer_type VARCHAR(50) NOT NULL,
+    discount_type VARCHAR(20) NOT NULL,
+    discount_value NUMERIC(10, 2) NOT NULL,
+
+    coupon_code VARCHAR(50) UNIQUE,
+
+    minimum_order_amount NUMERIC(10, 2) DEFAULT 0,
+    maximum_discount_amount NUMERIC(10, 2),
+
+    start_date TIMESTAMP NOT NULL,
+    end_date TIMESTAMP NOT NULL,
+
+    usage_limit INTEGER,
+    used_count INTEGER DEFAULT 0,
+
+    is_active BOOLEAN DEFAULT TRUE,
+    is_deleted BOOLEAN DEFAULT FALSE,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS offer_products (
+    offer_id UUID REFERENCES offers(id) ON DELETE CASCADE,
+    product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+
+    PRIMARY KEY (offer_id, product_id)
+);
+

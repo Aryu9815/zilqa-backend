@@ -200,7 +200,7 @@ async def seed_database() -> None:
                     'd0000000-0000-0000-0000-000000000002',
                     'a0000000-0000-0000-0000-000000000002',
                     5,
-                    "I was searching for minimal silver pieces that didn't feel cheap. ZILQA delivered perfectly. The packaging alone felt incredibly luxurious.",
+                    "I was searching for minimal silver pieces that didn't feel cheap. zelqa delivered perfectly. The packaging alone felt incredibly luxurious.",
                     ['https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=800&q=80'],
                     True,   # is_general
                     True,   # is_verified

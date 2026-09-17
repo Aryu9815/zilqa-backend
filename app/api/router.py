@@ -7,6 +7,7 @@ from app.api import (
     cart,
     categories,
     countries,
+    offers,
     orders,
     products,
     reviews,
@@ -35,6 +36,10 @@ api_router.include_router(categories.admin_router)
 api_router.include_router(products.public_router)
 api_router.include_router(products.admin_router)
 
+# Offers & Discounts (Public & Admin)
+api_router.include_router(offers.public_router)
+api_router.include_router(offers.admin_router)
+
 # Reviews (Public, Customer & Admin)
 api_router.include_router(reviews.public_router)
 api_router.include_router(reviews.user_router)
@@ -50,3 +55,4 @@ api_router.include_router(orders.admin_router)
 
 # Admin Dashboard Analytics
 api_router.include_router(analytics.router)
+

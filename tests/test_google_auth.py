@@ -363,7 +363,8 @@ async def test_google_login_jwt_claims_and_validity():
 
         payload = decode_token(response.access_token)
         assert payload["sub"] == str(user_id)
-        assert payload["role"] == "customer"
+        assert "role" not in payload
+        assert response.user.role == "customer"
         assert payload["type"] == "access"
         assert "exp" in payload
 

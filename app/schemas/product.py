@@ -6,12 +6,14 @@ from typing import Any, Dict, List, Optional, Union
 from uuid import UUID
 from pydantic import BaseModel, Field, HttpUrl, computed_field, field_validator, model_validator
 
+from app.schemas.offer import OfferBriefResponse
 from app.utils.helpers import (
     resolve_media_url,
     resolve_media_urls,
     strip_media_url_prefix,
     strip_media_urls_prefix,
 )
+
 
 
 class ProductSortBy(str, Enum):
@@ -151,6 +153,20 @@ class ProductResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+    offer_id: Optional[UUID] = None
+    offer_data: Optional[OfferBriefResponse] = None
+    discount_amount: Decimal = Decimal("0.00")
+    discounted_price: Optional[Decimal] = None
+    final_price: Optional[Decimal] = None
+
+    @model_validator(mode="after")
+    def populate_discounted_prices(self) -> "ProductResponse":
+        if self.final_price is None:
+            self.final_price = max(Decimal("0.00"), self.price - self.discount_amount)
+        if self.discounted_price is None:
+            self.discounted_price = self.final_price
+        return self
 
     @field_validator("faqs", mode="before")
     @classmethod

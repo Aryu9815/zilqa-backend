@@ -22,7 +22,17 @@ def test_password_hashing_and_verification():
     assert verify_password("WrongPassword!", hashed) is False
 
 
-def test_jwt_token_lifecycle():
+def test_jwt_token_lifecycle_without_role():
+    user_id = "a0000000-0000-0000-0000-000000000001"
+    token = create_access_token(subject=user_id)
+    
+    payload = decode_token(token)
+    assert payload["sub"] == user_id
+    assert "role" not in payload
+    assert payload["type"] == "access"
+
+
+def test_jwt_token_lifecycle_with_optional_role():
     user_id = "a0000000-0000-0000-0000-000000000001"
     role = "admin"
     token = create_access_token(subject=user_id, role=role)

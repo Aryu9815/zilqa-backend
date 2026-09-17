@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     # Google Authentication
     GOOGLE_CLIENT_ID: str = ""
 
+    # Razorpay Payment Gateway
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = ""
+
     # Cloudflare R2 Public Media URL (Bucket / Custom Domain)
     R2_PUBLIC_URL: str = ""
 

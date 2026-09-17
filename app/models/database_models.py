@@ -79,6 +79,16 @@ class UserAddressModel:
 class CartModel:
     id: UUID
     user_id: UUID
+    coupon_code: Optional[str] = None
+    coupon_discount_type: Optional[str] = None
+    coupon_discount_value: Optional[Decimal] = None
+    coupon_discount_amount: Decimal = Decimal("0.00")
+    subtotal: Decimal = Decimal("0.00")
+    total_discount: Decimal = Decimal("0.00")
+    shipping_amount: Decimal = Decimal("0.00")
+    total_amount: Decimal = Decimal("0.00")
+    is_deleted: bool = False
+    is_active: bool = True
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -89,6 +99,15 @@ class CartItemModel:
     cart_id: UUID
     product_id: UUID
     quantity: int = 1
+    offer_id: Optional[UUID] = None
+    unit_price: Decimal = Decimal("0.00")
+    discount_type: Optional[str] = None
+    discount_value: Optional[Decimal] = None
+    discount_amount: Decimal = Decimal("0.00")
+    final_unit_price: Decimal = Decimal("0.00")
+    total_price: Decimal = Decimal("0.00")
+    is_deleted: bool = False
+    is_active: bool = True
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -98,6 +117,8 @@ class WishlistItemModel:
     id: UUID
     user_id: UUID
     product_id: UUID
+    is_deleted: bool = False
+    is_active: bool = True
     created_at: Optional[datetime] = None
 
 
@@ -107,12 +128,18 @@ class OrderModel:
     user_id: UUID
     status: str
     payment_status: str
-    payment_method: str
     subtotal: Decimal
-    discount: Decimal
-    shipping_fee: Decimal
+    discount_amount: Decimal
+    shipping_amount: Decimal
     total_amount: Decimal
-    address_id: Optional[UUID] = None
+    shipping_address: Dict[str, Any]
+    currency: str = "INR"
+    coupon_code: Optional[str] = None
+    razorpay_order_id: Optional[str] = None
+    razorpay_payment_id: Optional[str] = None
+    razorpay_signature: Optional[str] = None
+    is_active: bool = True
+    is_deleted: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -122,11 +149,20 @@ class OrderItemModel:
     id: UUID
     order_id: UUID
     product_name: str
+    price: Decimal
     quantity: int
     unit_price: Decimal
-    subtotal: Decimal
+    discount_value: Decimal
+    discount_amount: Decimal
+    final_unit_price: Decimal
+    total_price: Decimal
     product_id: Optional[UUID] = None
     product_image_url: Optional[str] = None
+    discount_type: Optional[str] = None
+    is_active: bool = True
+    is_deleted: bool = False
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 @dataclass
@@ -154,3 +190,32 @@ class CountryModel:
     is_deleted: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+@dataclass
+class OfferModel:
+    id: UUID
+    name: str
+    offer_type: str
+    discount_type: str
+    discount_value: Decimal
+    start_date: datetime
+    end_date: datetime
+    description: Optional[str] = None
+    coupon_code: Optional[str] = None
+    minimum_order_amount: Decimal = Decimal("0.00")
+    maximum_discount_amount: Optional[Decimal] = None
+    usage_limit: Optional[int] = None
+    used_count: int = 0
+    is_active: bool = True
+    is_deleted: bool = False
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+@dataclass
+class OfferProductModel:
+    offer_id: UUID
+    product_id: UUID
+
+
