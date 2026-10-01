@@ -51,3 +51,11 @@ logs/
 
 products/
 migrations/
+zelqa-assets/
+generate_queries.py
+migrate_db.py
+schema_dump.txt
+test.py
+insert_products.sql
+.mypy_cache/
+uploads/

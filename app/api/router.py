@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api import (
+    admin,
     addresses,
     analytics,
     auth,
@@ -16,6 +17,9 @@ from app.api import (
 )
 
 api_router = APIRouter()
+
+# Admin
+api_router.include_router(admin.router)
 
 # Authentication
 api_router.include_router(auth.router)

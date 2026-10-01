@@ -15,8 +15,10 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255),
     mobile_number VARCHAR(255),
     google_id VARCHAR(255),
-    role VARCHAR(50) DEFAULT 'customer' NOT NULL,
     is_active BOOLEAN DEFAULT true NOT NULL,
+    otp VARCHAR(10),
+    otp_expires_at TIMESTAMPTZ,
+    is_email_verified BOOLEAN DEFAULT false NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
@@ -41,6 +43,12 @@ CREATE TABLE IF NOT EXISTS categories (
     name VARCHAR(255) NOT NULL,
     description TEXT,
     image_url TEXT,
+    slug VARCHAR(255) NOT NULL,
+    seo_title VARCHAR(255) NOT NULL,
+    seo_description TEXT,
+    og_title VARCHAR(255) NOT NULL,
+    og_description TEXT NOT NULL,
+    og_image TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
@@ -51,14 +59,20 @@ CREATE TABLE IF NOT EXISTS categories (
 CREATE TABLE IF NOT EXISTS products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
-    main_image_url TEXT NOT NULL,
+    main_image_url TEXT,
     price NUMERIC(12, 2) NOT NULL,
     category_ids UUID[] DEFAULT '{}'::uuid[] NOT NULL,
-    other_image_urls TEXT[] DEFAULT '{}'::text[] NOT NULL,
+    other_image_urls TEXT[] DEFAULT '{}'::text[],
     description TEXT,
     related_product_ids UUID[] NOT NULL DEFAULT '{}',
     product_description TEXT,
     faqs JSONB NOT NULL DEFAULT '[]',
+    slug VARCHAR(255) NOT NULL,
+    seo_title VARCHAR(255) NOT NULL,
+    seo_description TEXT,
+    og_title VARCHAR(255) NOT NULL,
+    og_description TEXT NOT NULL,
+    og_image TEXT,
     is_deleted BOOLEAN NOT NULL DEFAULT false,
     is_active BOOLEAN DEFAULT true NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -271,3 +285,14 @@ CREATE TABLE IF NOT EXISTS offer_products (
     PRIMARY KEY (offer_id, product_id)
 );
 
+
+
+CREATE TABLE IF NOT EXISTS admins (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255),
+    is_active BOOLEAN DEFAULT true NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+);

@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     # Cloudflare R2 Public Media URL (Bucket / Custom Domain)
     R2_PUBLIC_URL: str = ""
 
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 0
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SENDER_EMAIL: str = ""
+    
     # CORS Configuration
     CORS_ORIGINS: Union[List[str], str] = [
         "http://localhost:3000",
@@ -46,6 +52,13 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173"
     ]
+
+    
+    R2_ACCOUNT_ID: str = ""
+    R2_ACCESS_KEY_ID: str = ""
+    R2_SECRET_ACCESS_KEY: str = ""
+    R2_BUCKET_NAME: str = ""
+    R2_PUBLIC_URL: str = ""
 
     # Server Configuration
     HOST: str = "0.0.0.0"

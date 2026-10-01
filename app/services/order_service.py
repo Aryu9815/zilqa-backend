@@ -32,7 +32,6 @@ from app.utils.helpers import calculate_pagination
 
 
 VALID_STATUS_TRANSITIONS: Dict[str, List[str]] = {
-    "pending": ["confirmed", "cancelled"],
     "confirmed": ["processing", "cancelled"],
     "processing": ["shipped", "cancelled"],
     "shipped": ["delivered"],
@@ -343,7 +342,7 @@ class OrderService:
         """
         Places a new order from current cart.
         If Razorpay payment details are included, verifies signature and marks order confirmed/paid.
-        Otherwise creates order in pending status.
+        Otherwise creates order in confirmed status with pending payment.
         Creates order and order_items with offer details and hard-deletes cart items.
         """
         # If Razorpay payment details are provided, route to payment verification
@@ -370,7 +369,7 @@ class OrderService:
         cart_id = pricing["cart_id"]
 
         # Default statuses
-        status_val = OrderStatus.PENDING.value
+        status_val = OrderStatus.CONFIRMED.value
         payment_status_val = PaymentStatus.PENDING.value
 
         # 3. Atomically commit order, items, and hard-delete cart items
@@ -586,6 +585,8 @@ class OrderService:
 
         current_status = current["status"]
         allowed_transitions = VALID_STATUS_TRANSITIONS.get(current_status, [])
+        if current_status == "pending":
+            allowed_transitions = ["confirmed", "cancelled"]
         if new_status.value not in allowed_transitions:
             raise BadRequestException(
                 message=f"Cannot transition order status from '{current_status}' to '{new_status.value}'.",

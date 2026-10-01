@@ -41,6 +41,12 @@ class ProductBase(BaseModel):
     related_product_ids: List[UUID] = Field(default_factory=list, description="Associated related product UUIDs")
     faqs: List[ProductFAQ] = Field(default_factory=list, description="Product frequently asked questions")
     is_active: bool = Field(True, description="Whether product is live on storefront")
+    seo_title: str = Field(..., description="SEO title")
+    seo_description: Optional[str] = Field(None, description="SEO description")
+    slug: str = Field(..., description="Product slug")
+    og_image: Optional[str] = Field(None, description="OG Image URL")
+    og_title: Optional[str] = Field(None, description="OG Title")
+    og_description: Optional[str] = Field(None, description="OG Description")
 
     @field_validator("main_image_url", mode="before")
     @classmethod
@@ -84,8 +90,49 @@ class ProductBase(BaseModel):
         return values
 
 
-class ProductCreate(ProductBase):
-    pass
+class ProductCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255, description="Product title")
+    price: Decimal = Field(..., ge=0, decimal_places=2, description="Product price in INR/USD")
+    category_ids: List[UUID] = Field(default_factory=list, description="Associated Category UUIDs")
+    description: Optional[str] = Field(None, description="Short product description")
+    product_description: Optional[str] = Field(None, description="Detailed product description / story / specs")
+    related_product_ids: List[UUID] = Field(default_factory=list, description="Associated related product UUIDs")
+    faqs: List[ProductFAQ] = Field(default_factory=list, description="Product frequently asked questions")
+    is_active: bool = Field(True, description="Whether product is live on storefront")
+    seo_title: str = Field(..., description="SEO title")
+    seo_description: Optional[str] = Field(None, description="SEO description")
+    slug: str = Field(..., description="Product slug")
+    og_image: Optional[str] = Field(None, description="OG Image URL")
+    og_title: Optional[str] = Field(None, description="OG Title")
+    og_description: Optional[str] = Field(None, description="OG Description")
+
+    @field_validator("faqs", mode="before")
+    @classmethod
+    def parse_faqs(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except Exception:
+                return []
+        if v is None:
+            return []
+        return v
+
+    @field_validator("related_product_ids", mode="before")
+    @classmethod
+    def parse_related_ids(cls, v: Any) -> Any:
+        if v is None:
+            return []
+        return v
+
+    @model_validator(mode="before")
+    @classmethod
+    def handle_legacy_category_id(cls, values: Any) -> Any:
+        if isinstance(values, dict):
+            if "category_ids" not in values and "category_id" in values and values["category_id"]:
+                values["category_ids"] = [values["category_id"]]
+        return values
+
 
 
 class ProductUpdate(BaseModel):
@@ -99,6 +146,12 @@ class ProductUpdate(BaseModel):
     related_product_ids: Optional[List[UUID]] = None
     faqs: Optional[List[ProductFAQ]] = None
     is_active: Optional[bool] = None
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
+    slug: Optional[str] = None
+    og_image: Optional[str] = None
+    og_title: Optional[str] = None
+    og_description: Optional[str] = None
 
     @field_validator("main_image_url", mode="before")
     @classmethod
@@ -141,7 +194,7 @@ class ProductUpdate(BaseModel):
 class ProductResponse(BaseModel):
     id: UUID
     name: str
-    main_image_url: str
+    main_image_url: Optional[str]
     other_image_urls: List[str] = []
     price: Decimal
     category_ids: List[UUID] = []
@@ -159,6 +212,13 @@ class ProductResponse(BaseModel):
     discount_amount: Decimal = Decimal("0.00")
     discounted_price: Optional[Decimal] = None
     final_price: Optional[Decimal] = None
+
+    seo_title: str
+    seo_description: Optional[str]
+    slug: str
+    og_image: Optional[str]
+    og_title: Optional[str]
+    og_description: Optional[str]
 
     @model_validator(mode="after")
     def populate_discounted_prices(self) -> "ProductResponse":

@@ -1,8 +1,9 @@
+from app.db.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, Query, status
-
+from fastapi import APIRouter, Depends, Query, status, UploadFile, File, Form
 from app.core.dependencies import require_admin
 from app.schemas.common import PaginatedResponse, ResponseEnvelope
 from app.schemas.product import ProductCreate, ProductResponse, ProductSortBy, ProductUpdate
@@ -12,10 +13,6 @@ from app.services.product_service import product_service
 public_router = APIRouter(prefix="/products", tags=["Products"])
 admin_router = APIRouter(prefix="/admin/products", tags=["Products"])
 
-
-# =============================================================================
-# PUBLIC PRODUCT ENDPOINTS
-# =============================================================================
 
 @public_router.get(
     "",
@@ -31,8 +28,8 @@ async def list_products(
     max_price: Optional[Decimal] = Query(None, ge=0, description="Maximum price filter"),
     search: Optional[str] = Query(None, description="Search term in product name/description"),
     sort_by: Optional[ProductSortBy] = Query(ProductSortBy.NEWEST, description="Sort criteria")
-) -> PaginatedResponse[ProductResponse]:
-    return await product_service.list_products(
+, db: AsyncSession = Depends(get_db)) -> PaginatedResponse[ProductResponse]:
+    return await product_service.list_products(db, 
         page=page,
         limit=limit,
         category_id=category_id,
@@ -50,8 +47,8 @@ async def list_products(
     response_model=ResponseEnvelope[ProductResponse],
     summary="Get single product details (Public)"
 )
-async def get_product(product_id: UUID) -> ResponseEnvelope[ProductResponse]:
-    product = await product_service.get_product(product_id, is_active_only=True)
+async def get_product(product_id: UUID, db: AsyncSession = Depends(get_db)) -> ResponseEnvelope[ProductResponse]:
+    product = await product_service.get_product(db, product_id, is_active_only=True)
     return ResponseEnvelope(
         success=True,
         message="Product retrieved successfully",
@@ -64,8 +61,8 @@ async def get_product(product_id: UUID) -> ResponseEnvelope[ProductResponse]:
     response_model=ResponseEnvelope[List[ProductResponse]],
     summary="Get related products for a product (Public)"
 )
-async def get_related_products(product_id: UUID) -> ResponseEnvelope[List[ProductResponse]]:
-    related_products = await product_service.get_related_products(product_id)
+async def get_related_products(product_id: UUID, db: AsyncSession = Depends(get_db)) -> ResponseEnvelope[List[ProductResponse]]:
+    related_products = await product_service.get_related_products(db, product_id)
     return ResponseEnvelope(
         success=True,
         message="Related products retrieved successfully",
@@ -73,9 +70,7 @@ async def get_related_products(product_id: UUID) -> ResponseEnvelope[List[Produc
     )
 
 
-# =============================================================================
 # ADMIN PRODUCT ENDPOINTS
-# =============================================================================
 
 @admin_router.post(
     "",
@@ -85,9 +80,11 @@ async def get_related_products(product_id: UUID) -> ResponseEnvelope[List[Produc
 )
 async def create_product(
     product_in: ProductCreate,
-    current_admin: Dict[str, Any] = Depends(require_admin)
-) -> ResponseEnvelope[ProductResponse]:
-    product = await product_service.create_product(product_in)
+    current_admin: Any = Depends(require_admin)
+, db: AsyncSession = Depends(get_db)) -> ResponseEnvelope[ProductResponse]:
+    print('creation started')
+    product = await product_service.create_product(db, product_in)
+    print("product created ....................")
     return ResponseEnvelope(
         success=True,
         message="Product created successfully",
@@ -103,9 +100,9 @@ async def create_product(
 async def update_product(
     product_id: UUID,
     product_in: ProductUpdate,
-    current_admin: Dict[str, Any] = Depends(require_admin)
-) -> ResponseEnvelope[ProductResponse]:
-    product = await product_service.update_product(product_id, product_in)
+    current_admin: Any = Depends(require_admin)
+, db: AsyncSession = Depends(get_db)) -> ResponseEnvelope[ProductResponse]:
+    product = await product_service.update_product(db, product_id, product_in)
     return ResponseEnvelope(
         success=True,
         message="Product updated successfully",
@@ -120,10 +117,59 @@ async def update_product(
 )
 async def delete_product(
     product_id: UUID,
-    current_admin: Dict[str, Any] = Depends(require_admin)
-) -> ResponseEnvelope[None]:
-    await product_service.delete_product(product_id)
+    current_admin: Any = Depends(require_admin)
+, db: AsyncSession = Depends(get_db)) -> ResponseEnvelope[None]:
+    await product_service.delete_product(db, product_id)
     return ResponseEnvelope(
         success=True,
         message="Product deactivated successfully"
     )
+
+
+# images
+
+from app.repositories.product_repository import product_repository
+
+@admin_router.post("/{product_id}/images/main")
+async def upload_main_image(
+    product_id: UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_admin: Any = Depends(require_admin)
+):
+    image = await product_repository.upload_main_image(db, product_id, file)
+    if not image:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    return {
+        "success": True,
+        "message": "Main image uploaded successfully",
+        "data": image,
+    }
+
+@admin_router.post("/{product_id}/images/other")
+async def upload_other_images(
+    product_id: UUID,
+    images: str = Form(...),
+    files: List[UploadFile] = File(default=[]),
+    db: AsyncSession = Depends(get_db),
+    current_admin: Any = Depends(require_admin)
+):
+    import json
+    from fastapi import HTTPException
+    
+    try:
+        images_data = json.loads(images)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid images JSON format")
+        
+    result = await product_repository.upload_other_images(db, product_id, images_data, files)
+    if not result:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    return {
+        "success": True,
+        "message": "Other images uploaded successfully",
+        "data": result,
+    }

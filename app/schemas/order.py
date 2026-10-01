@@ -9,7 +9,6 @@ from app.utils.helpers import resolve_media_url
 
 
 class OrderStatus(str, Enum):
-    PENDING = "pending"
     CONFIRMED = "confirmed"
     PROCESSING = "processing"
     SHIPPED = "shipped"

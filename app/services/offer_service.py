@@ -210,16 +210,64 @@ class OfferService:
 
         return None, None, Decimal("0.00"), price, price
 
-    async def enrich_product_records(self, records: List[asyncpg.Record]) -> List[Dict[str, Any]]:
+    async def enrich_product_records(self, db, records: List[Any]) -> List[Dict[str, Any]]:
         """Enriches product records with offer data, final price, discounted price, and offer id in batch."""
         if not records:
             return []
 
-        active_offers = await offer_repository.get_active_offers()
+        from sqlalchemy import select, or_
+        from sqlalchemy.orm import selectinload
+        from app.models.offer import Offer
+        
+        current_time = datetime.now(timezone.utc).replace(tzinfo=None)
+        
+        stmt = (
+            select(Offer)
+            .options(selectinload(Offer.offer_products))
+            .where(
+                Offer.is_active == True,
+                Offer.is_deleted == False,
+                Offer.start_date <= current_time,
+                Offer.end_date >= current_time,
+                or_(Offer.usage_limit.is_(None), Offer.used_count < Offer.usage_limit)
+            )
+            .order_by(Offer.created_at.desc())
+        )
+        result = await db.execute(stmt)
+        orm_offers = result.scalars().all()
+        
+        active_offers = []
+        for o in orm_offers:
+            active_offers.append({
+                "id": o.id,
+                "name": o.name,
+                "description": o.description,
+                "offer_type": o.offer_type,
+                "discount_type": o.discount_type,
+                "discount_value": o.discount_value,
+                "coupon_code": o.coupon_code,
+                "minimum_order_amount": o.minimum_order_amount,
+                "maximum_discount_amount": o.maximum_discount_amount,
+                "start_date": o.start_date,
+                "end_date": o.end_date,
+                "usage_limit": o.usage_limit,
+                "used_count": o.used_count,
+                "is_active": o.is_active,
+                "is_deleted": o.is_deleted,
+                "created_at": o.created_at,
+                "updated_at": o.updated_at,
+                "product_ids": [op.product_id for op in o.offer_products]
+            })
+
         enriched: List[Dict[str, Any]] = []
 
         for r in records:
-            d = dict(r)
+            d = dict(r) if hasattr(r, "keys") else (r.__dict__ if hasattr(r, "__dict__") else dict(r))
+            if not isinstance(d, dict) and hasattr(r, "_asdict"):
+                d = dict(r._asdict())
+            elif not isinstance(d, dict) and hasattr(r, "__table__"):
+                d = {c.name: getattr(r, c.name) for c in r.__table__.columns}
+
             price = Decimal(str(d["price"]))
             pid = d["id"]
 
@@ -238,9 +286,9 @@ class OfferService:
 
         return enriched
 
-    async def enrich_single_product_record(self, record: asyncpg.Record) -> Dict[str, Any]:
+    async def enrich_single_product_record(self, db, record: Any) -> Dict[str, Any]:
         """Enriches a single product record with offer details."""
-        enriched = await self.enrich_product_records([record])
+        enriched = await self.enrich_product_records(db, [record])
         return enriched[0]
 
     # =========================================================================
