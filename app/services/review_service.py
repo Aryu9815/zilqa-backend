@@ -1,5 +1,6 @@
 from typing import Optional
 from uuid import UUID
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ForbiddenException, NotFoundException
 from app.repositories.product_repository import product_repository
@@ -20,11 +21,12 @@ class ReviewService:
 
     async def create_review(
         self,
+        db: AsyncSession,
         review_in: ReviewCreate,
         user_id: Optional[UUID] = None
     ) -> ReviewResponse:
         assert review_in.product_id is not None, "product_id is required"
-        product = await product_repository.get_by_id(review_in.product_id)
+        product = await product_repository.get_by_id(db, review_in.product_id)
         if not product:
             raise NotFoundException(message="Product not found", error_code="PRODUCT_NOT_FOUND")
 
@@ -54,13 +56,14 @@ class ReviewService:
 
     async def list_product_reviews(
         self,
+        db: AsyncSession,
         product_id: UUID,
         page: int = 1,
         limit: int = 20,
         rating: Optional[int] = None,
         sort_by: Optional[ReviewSortBy] = ReviewSortBy.NEWEST
     ) -> PaginatedResponse[ReviewResponse]:
-        product = await product_repository.get_by_id(product_id)
+        product = await product_repository.get_by_id(db, product_id)
         if not product:
             raise NotFoundException(message="Product not found", error_code="PRODUCT_NOT_FOUND")
 
@@ -77,8 +80,8 @@ class ReviewService:
         pagination = calculate_pagination(total=total, page=page, limit=limit)
         return PaginatedResponse(data=items, pagination=pagination)
 
-    async def get_product_summary(self, product_id: UUID) -> ReviewSummaryResponse:
-        product = await product_repository.get_by_id(product_id)
+    async def get_product_summary(self, db: AsyncSession, product_id: UUID) -> ReviewSummaryResponse:
+        product = await product_repository.get_by_id(db, product_id)
         if not product:
             raise NotFoundException(message="Product not found", error_code="PRODUCT_NOT_FOUND")
 

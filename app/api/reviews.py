@@ -1,8 +1,10 @@
 from typing import Any, Dict, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import require_admin, require_authenticated_user
+from app.db.database import get_db
 from app.schemas.common import PaginatedResponse, ResponseEnvelope
 from app.schemas.review import (
     ReviewCreate,
@@ -34,9 +36,11 @@ async def list_product_reviews(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     rating: Optional[int] = Query(None, ge=1, le=5, description="Filter by star rating (1-5)"),
-    sort_by: Optional[ReviewSortBy] = Query(ReviewSortBy.NEWEST, description="Sort criteria")
+    sort_by: Optional[ReviewSortBy] = Query(ReviewSortBy.NEWEST, description="Sort criteria"),
+    db: AsyncSession = Depends(get_db)
 ) -> PaginatedResponse[ReviewResponse]:
     return await review_service.list_product_reviews(
+        db=db,
         product_id=product_id,
         page=page,
         limit=limit,
@@ -51,9 +55,10 @@ async def list_product_reviews(
     summary="Get product review summary & rating breakdown (Public)"
 )
 async def get_product_review_summary(
-    product_id: UUID
+    product_id: UUID,
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[ReviewSummaryResponse]:
-    summary = await review_service.get_product_summary(product_id)
+    summary = await review_service.get_product_summary(db=db, product_id=product_id)
     return ResponseEnvelope(
         success=True,
         message="Product review summary retrieved successfully",
@@ -130,11 +135,13 @@ async def get_review(
 async def create_product_review(
     product_id: UUID,
     review_in: ReviewCreate,
-    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[ReviewResponse]:
     # Ensure route path product_id takes precedence
     review_in.product_id = product_id
     review = await review_service.create_review(
+        db=db,
         review_in=review_in,
         user_id=current_user["id"]
     )
@@ -153,9 +160,11 @@ async def create_product_review(
 )
 async def create_review_standalone(
     review_in: ReviewCreate,
-    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[ReviewResponse]:
     review = await review_service.create_review(
+        db=db,
         review_in=review_in,
         user_id=current_user["id"]
     )

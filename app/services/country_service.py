@@ -102,5 +102,27 @@ class CountryService:
         if not deleted:
             raise NotFoundException(message="Country not found", error_code="COUNTRY_NOT_FOUND")
 
+    async def get_exchange_rate_for_country(self, country_code: str) -> Optional[dict]:
+        """
+        Fetch exchange rate for a given country code if exchange is available.
+        Returns a dictionary with exchange_rate or None.
+        """
+        country = await country_repository.get_by_code(country_code)
+        if not country:
+            return None
+
+        is_available = bool(country.get("exchange_available"))
+        rate = country.get("rate_from_usd")
+        exchange_rate = float(rate) if (is_available and rate is not None and rate > 0) else None
+
+        return {
+            "country_code": country["code"].strip(),
+            "country_name": country.get("name"),
+            "exchange_available": is_available,
+            "exchange_rate": exchange_rate
+        }
+
 
 country_service = CountryService()
+get_exchange_rate_currency_for_country = country_service.get_exchange_rate_for_country
+get_exchage_rate_currency_for_country = country_service.get_exchange_rate_for_country

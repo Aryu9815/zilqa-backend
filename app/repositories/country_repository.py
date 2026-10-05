@@ -22,7 +22,7 @@ class CountryRepository(BaseRepository):
             conditions.append("is_active = TRUE")
 
         query = f"""
-            SELECT id, name, TRIM(code) AS code, is_active, is_deleted, created_at, updated_at
+            SELECT id, name, TRIM(code) AS code, rate_from_usd, exchange_available, is_active, is_deleted, created_at, updated_at
             FROM countries
             WHERE {" AND ".join(conditions)}
         """
@@ -48,7 +48,7 @@ class CountryRepository(BaseRepository):
             conditions.append("is_deleted = FALSE")
 
         query = f"""
-            SELECT id, name, TRIM(code) AS code, is_active, is_deleted, created_at, updated_at
+            SELECT id, name, TRIM(code) AS code, rate_from_usd, exchange_available, is_active, is_deleted, created_at, updated_at
             FROM countries
             WHERE {" AND ".join(conditions)}
         """
@@ -74,7 +74,7 @@ class CountryRepository(BaseRepository):
             conditions.append("is_deleted = FALSE")
 
         query = f"""
-            SELECT id, name, TRIM(code) AS code, is_active, is_deleted, created_at, updated_at
+            SELECT id, name, TRIM(code) AS code, rate_from_usd, exchange_available, is_active, is_deleted, created_at, updated_at
             FROM countries
             WHERE {" AND ".join(conditions)}
         """
@@ -117,7 +117,7 @@ class CountryRepository(BaseRepository):
         data_params.extend([limit, offset])
 
         query = f"""
-            SELECT id, name, TRIM(code) AS code, is_active, is_deleted, created_at, updated_at
+            SELECT id, name, TRIM(code) AS code, rate_from_usd, exchange_available, is_active, is_deleted, created_at, updated_at
             FROM countries
             {where_clause}
             ORDER BY name ASC
@@ -132,14 +132,16 @@ class CountryRepository(BaseRepository):
         connection: Optional[asyncpg.Connection] = None
     ) -> asyncpg.Record:
         query = """
-            INSERT INTO countries (name, code, is_active, is_deleted, created_at, updated_at)
-            VALUES ($1, $2, $3, FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            RETURNING id, name, TRIM(code) AS code, is_active, is_deleted, created_at, updated_at
+            INSERT INTO countries (name, code, rate_from_usd, exchange_available, is_active, is_deleted, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, FALSE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id, name, TRIM(code) AS code, rate_from_usd, exchange_available, is_active, is_deleted, created_at, updated_at
         """
         record = await self.fetch_one(
             query,
             country_in.name,
             country_in.code,
+            country_in.rate_from_usd,
+            country_in.exchange_available,
             country_in.is_active,
             connection=connection
         )
@@ -166,6 +168,16 @@ class CountryRepository(BaseRepository):
             params.append(country_in.code)
             idx += 1
 
+        if country_in.rate_from_usd is not None:
+            updates.append(f"rate_from_usd = ${idx}")
+            params.append(country_in.rate_from_usd)
+            idx += 1
+
+        if country_in.exchange_available is not None:
+            updates.append(f"exchange_available = ${idx}")
+            params.append(country_in.exchange_available)
+            idx += 1
+
         if country_in.is_active is not None:
             updates.append(f"is_active = ${idx}")
             params.append(country_in.is_active)
@@ -181,7 +193,7 @@ class CountryRepository(BaseRepository):
             UPDATE countries
             SET {", ".join(updates)}
             WHERE id = ${idx} AND is_deleted = FALSE
-            RETURNING id, name, TRIM(code) AS code, is_active, is_deleted, created_at, updated_at
+            RETURNING id, name, TRIM(code) AS code, rate_from_usd, exchange_available, is_active, is_deleted, created_at, updated_at
         """
         return await self.fetch_one(query, *params, connection=connection)
 

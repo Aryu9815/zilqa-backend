@@ -1,5 +1,6 @@
 from typing import List
 from uuid import UUID
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundException
 from app.repositories.product_repository import product_repository
@@ -32,8 +33,8 @@ class WishlistService:
 
         return WishlistResponse(items=items, total_items=len(items))
 
-    async def add_to_wishlist(self, user_id: UUID, product_id: UUID) -> WishlistResponse:
-        product = await product_repository.get_by_id(product_id)
+    async def add_to_wishlist(self, db: AsyncSession, user_id: UUID, product_id: UUID) -> WishlistResponse:
+        product = await product_repository.get_by_id(db, product_id)
         if not product:
             raise NotFoundException(message="Product not found", error_code="PRODUCT_NOT_FOUND")
 

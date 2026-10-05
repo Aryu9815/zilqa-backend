@@ -14,7 +14,7 @@ class UserRepository(BaseRepository):
         connection: Optional[asyncpg.Connection] = None
     ) -> Optional[asyncpg.Record]:
         query = """
-            SELECT id, name, email, mobile_number, password_hash, google_id, role, is_active, created_at, updated_at
+            SELECT id, name, email, mobile_number, password_hash, google_id, role, is_active, country_code, created_at, updated_at
             FROM users
             WHERE id = $1
         """
@@ -26,7 +26,7 @@ class UserRepository(BaseRepository):
         connection: Optional[asyncpg.Connection] = None
     ) -> Optional[asyncpg.Record]:
         query = """
-            SELECT id, name, email, mobile_number, password_hash, google_id, role, is_active, created_at, updated_at
+            SELECT id, name, email, mobile_number, password_hash, google_id, role, is_active, country_code, created_at, updated_at
             FROM users
             WHERE LOWER(email) = LOWER($1)
             LIMIT 1
@@ -39,7 +39,7 @@ class UserRepository(BaseRepository):
         connection: Optional[asyncpg.Connection] = None
     ) -> Optional[asyncpg.Record]:
         query = """
-            SELECT id, name, email, mobile_number, password_hash, google_id, role, is_active, created_at, updated_at
+            SELECT id, name, email, mobile_number, password_hash, google_id, role, is_active, country_code, created_at, updated_at
             FROM users
             WHERE google_id = $1
             LIMIT 1
@@ -54,14 +54,15 @@ class UserRepository(BaseRepository):
         role: str = "customer",
         google_id: Optional[str] = None,
         mobile_number: Optional[str] = None,
+        country_code: Optional[str] = None,
         connection: Optional[asyncpg.Connection] = None
     ) -> asyncpg.Record:
         query = """
-            INSERT INTO users (name, email, password_hash, google_id, mobile_number, role, is_active, created_at, updated_at)
-            VALUES ($1, LOWER($2), $3, $4, $5, $6, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            RETURNING id, name, email, mobile_number, google_id, role, is_active, created_at, updated_at
+            INSERT INTO users (name, email, password_hash, google_id, mobile_number, role, country_code, is_active, created_at, updated_at)
+            VALUES ($1, LOWER($2), $3, $4, $5, $6, $7, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id, name, email, mobile_number, google_id, role, country_code, is_active, created_at, updated_at
         """
-        record = await self.fetch_one(query, name, email, password_hash, google_id, mobile_number, role, connection=connection)
+        record = await self.fetch_one(query, name, email, password_hash, google_id, mobile_number, role, country_code, connection=connection)
         assert record is not None
         return record
 
@@ -75,7 +76,7 @@ class UserRepository(BaseRepository):
             UPDATE users
             SET google_id = $1, updated_at = CURRENT_TIMESTAMP
             WHERE id = $2
-            RETURNING id, name, email, mobile_number, google_id, role, is_active, created_at, updated_at
+            RETURNING id, name, email, mobile_number, google_id, role, country_code, is_active, created_at, updated_at
         """
         return await self.fetch_one(query, google_id, user_id, connection=connection)
 
@@ -88,6 +89,7 @@ class UserRepository(BaseRepository):
         is_active: Optional[bool] = None,
         google_id: Optional[str] = None,
         mobile_number: Optional[str] = None,
+        country_code: Optional[str] = None,
         connection: Optional[asyncpg.Connection] = None
     ) -> Optional[asyncpg.Record]:
         updates = []
@@ -118,6 +120,10 @@ class UserRepository(BaseRepository):
             updates.append(f"mobile_number = ${idx}")
             params.append(mobile_number)
             idx += 1
+        if country_code is not None:
+            updates.append(f"country_code = ${idx}")
+            params.append(country_code)
+            idx += 1
 
         if not updates:
             return await self.get_by_id(user_id, connection=connection)
@@ -129,9 +135,23 @@ class UserRepository(BaseRepository):
             UPDATE users
             SET {", ".join(updates)}
             WHERE id = ${idx}
-            RETURNING id, name, email, mobile_number, google_id, role, is_active, created_at, updated_at
+            RETURNING id, name, email, mobile_number, google_id, role, country_code, is_active, created_at, updated_at
         """
         return await self.fetch_one(query, *params, connection=connection)
+
+    async def update_country_code(
+        self,
+        user_id: UUID,
+        country_code: str,
+        connection: Optional[asyncpg.Connection] = None
+    ) -> Optional[asyncpg.Record]:
+        query = """
+            UPDATE users
+            SET country_code = $1, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
+            RETURNING id, name, email, mobile_number, google_id, role, country_code, is_active, created_at, updated_at
+        """
+        return await self.fetch_one(query, country_code, user_id, connection=connection)
 
     # ----------------- Refresh Tokens -----------------
 

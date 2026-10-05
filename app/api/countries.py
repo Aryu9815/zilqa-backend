@@ -1,11 +1,12 @@
 from typing import Any, Dict, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 
 from app.core.dependencies import require_admin
 from app.schemas.common import PaginatedResponse, ResponseEnvelope
-from app.schemas.country import CountryCreate, CountryResponse, CountryUpdate
+from app.schemas.country import CountryCreate, CountryResponse, CountryUpdate, LocationResponse
 from app.services.country_service import country_service
+from app.utils.helpers import get_client_ip, get_country_from_ip
 
 public_router = APIRouter(prefix="/countries", tags=["Countries"])
 admin_router = APIRouter(prefix="/admin/countries", tags=["Countries"])
@@ -14,6 +15,45 @@ admin_router = APIRouter(prefix="/admin/countries", tags=["Countries"])
 # =============================================================================
 # PUBLIC COUNTRY ENDPOINTS
 # =============================================================================
+
+@public_router.get(
+    "/location",
+    summary="Get user location and exchange rate from IP (No login required)"
+)
+async def get_location(
+    request: Request,
+    country_code: Optional[str] = Query(None, description="Optional override for testing")
+) -> Dict[str, Any]:
+    """
+    Detect user's country from IP (defaults to US if not detected)
+    and return exchange rate if available in countries table.
+    """
+    if not country_code:
+        ip = get_client_ip(request)
+        country_code = await get_country_from_ip(ip)
+
+    if not country_code:
+        country_code = "US"
+    else:
+        country_code = country_code.strip().upper()
+
+    currency = await country_service.get_exchange_rate_for_country(country_code)
+    exchange_rate = currency["exchange_rate"] if currency else None
+    exchange_available = currency["exchange_available"] if currency else False
+
+    return {
+        "success": True,
+        "message": "Location retrieved successfully",
+        "country_code": country_code,
+        "exchange_rate": exchange_rate,
+        "exchange_available": exchange_available,
+        "data": {
+            "country_code": country_code,
+            "exchange_rate": exchange_rate,
+            "exchange_available": exchange_available,
+        }
+    }
+
 
 @public_router.get(
     "",

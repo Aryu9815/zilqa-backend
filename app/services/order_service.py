@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 import asyncpg
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_transaction
@@ -27,8 +28,15 @@ from app.schemas.order import (
     RazorpayOrderResponse,
     RazorpayPaymentVerifyRequest,
 )
+from app.repositories.user_repository import user_repository
+from app.repositories.country_repository import country_repository
 from app.services.offer_service import offer_service, round_money
-from app.utils.helpers import calculate_pagination
+from app.utils.helpers import (
+    calculate_pagination,
+    get_country_name_for_code,
+    get_currency_for_country,
+    get_user_currency_and_rate,
+)
 
 
 VALID_STATUS_TRANSITIONS: Dict[str, List[str]] = {
@@ -49,7 +57,11 @@ class OrderService:
         address_id: Optional[UUID] = None,
         shipping_address: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Resolves shipping address from either address_id or explicit shipping_address dict."""
+        """Resolves shipping address from either address_id or explicit shipping_address dict, using user's saved country as fallback."""
+        user = await user_repository.get_by_id(user_id)
+        user_country_code = user["country_code"].strip().upper() if user and user.get("country_code") else None
+        default_country = get_country_name_for_code(user_country_code) if user_country_code else "India"
+
         if address_id:
             addr_record = await address_repository.get_by_id_and_user(address_id, user_id)
             if not addr_record:
@@ -66,7 +78,7 @@ class OrderService:
                 "city": addr_record["city"],
                 "state": addr_record["state"],
                 "postal_code": addr_record["postal_code"],
-                "country": addr_record.get("country", "India"),
+                "country": addr_record.get("country") or default_country,
             }
 
         if shipping_address:
@@ -77,7 +89,10 @@ class OrderService:
                     message=f"Shipping address is missing required fields: {', '.join(missing)}",
                     error_code="INCOMPLETE_SHIPPING_ADDRESS"
                 )
-            return dict(shipping_address)
+            resolved = dict(shipping_address)
+            if not resolved.get("country"):
+                resolved["country"] = default_country
+            return resolved
 
         raise BadRequestException(
             message="Shipping address is required to place an order",
@@ -86,6 +101,7 @@ class OrderService:
 
     async def _calculate_cart_pricing(
         self,
+        db: AsyncSession,
         user_id: UUID,
         coupon_code: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -121,9 +137,13 @@ class OrderService:
         subtotal = Decimal("0.00")
         product_discount_total = Decimal("0.00")
 
+        currency, rate, user_country_code, user_country_name, exchange_available = await get_user_currency_and_rate(
+            user_id, user_repository, country_repository
+        )
+
         for item in cart_items_records:
             product_id = item["product_id"]
-            live_product = await product_repository.get_by_id(product_id)
+            live_product = await product_repository.get_by_id(db, product_id)
 
             if not live_product or not live_product["is_active"] or live_product.get("is_deleted", False):
                 raise BadRequestException(
@@ -131,7 +151,8 @@ class OrderService:
                     error_code="PRODUCT_UNAVAILABLE"
                 )
 
-            orig_price = Decimal(str(live_product["price"]))
+            base_price = Decimal(str(live_product["price"]))
+            orig_price = round_money(base_price * rate)
             quantity = int(item["quantity"])
 
             offer_id, offer_data, disc_unit, _, final_unit_price = (
@@ -172,23 +193,24 @@ class OrderService:
         coupon_offer_obj = None
         if coupon_code:
             eligible_base = max(Decimal("0.00"), subtotal - product_discount_total)
+            base_subtotal = round_money(eligible_base / rate) if rate > 0 else eligible_base
             coupon_res = await offer_service.validate_and_calculate_coupon(
                 coupon_code=coupon_code,
                 user_id=user_id,
-                cart_subtotal=eligible_base
+                cart_subtotal=base_subtotal
             )
             if not coupon_res.is_valid:
                 raise BadRequestException(
                     message=coupon_res.message,
                     error_code="INVALID_COUPON"
                 )
-            coupon_discount = coupon_res.discount_amount
+            coupon_discount = round_money(coupon_res.discount_amount * rate)
             if coupon_res.offer:
                 applied_coupon_offer_id = coupon_res.offer.id
                 coupon_offer_obj = coupon_res.offer
 
-        free_delivery_threshold = Decimal("150.00")
-        standard_delivery_fee = Decimal("15.00")
+        free_delivery_threshold = round_money(Decimal("150.00") * rate)
+        standard_delivery_fee = round_money(Decimal("15.00") * rate)
         net_after_prod_disc = max(Decimal("0.00"), subtotal - product_discount_total)
 
         if net_after_prod_disc >= free_delivery_threshold or (coupon_offer_obj and coupon_offer_obj.offer_type == OfferType.FREE_SHIPPING.value) or net_after_prod_disc == Decimal("0.00"):
@@ -209,8 +231,11 @@ class OrderService:
             "total_amount": total_amount,
             "coupon_code": coupon_code,
             "applied_coupon_offer_id": applied_coupon_offer_id,
-            "calculated_items": calculated_items
+            "calculated_items": calculated_items,
+            "currency": currency,
+            "country_code": user_country_code,
         }
+
 
     # =========================================================================
     # RAZORPAY CHECKOUT METHODS
@@ -218,6 +243,7 @@ class OrderService:
 
     async def create_razorpay_order(
         self,
+        db: AsyncSession,
         user_id: UUID,
         req: RazorpayOrderCreateRequest
     ) -> RazorpayOrderResponse:
@@ -229,19 +255,20 @@ class OrderService:
         await self._resolve_shipping_address(user_id, req.address_id, req.shipping_address)
 
         # Calculate pricing
-        pricing = await self._calculate_cart_pricing(user_id, req.coupon_code)
+        pricing = await self._calculate_cart_pricing(db, user_id, req.coupon_code)
+        currency = pricing.get("currency") or "INR"
 
         # Create Razorpay order
         rzp_order = await razorpay_service.create_order(
             amount=pricing["total_amount"],
-            currency="INR",
+            currency=currency,
             notes={"user_id": str(user_id)}
         )
 
         return RazorpayOrderResponse(
             razorpay_order_id=rzp_order["id"],
             amount=rzp_order["amount"],
-            currency=rzp_order.get("currency", "INR"),
+            currency=rzp_order.get("currency", currency),
             key_id=settings.RAZORPAY_KEY_ID,
             subtotal=pricing["subtotal"],
             discount_amount=pricing["total_discount"],
@@ -252,6 +279,7 @@ class OrderService:
 
     async def verify_and_complete_order(
         self,
+        db: AsyncSession,
         user_id: UUID,
         req: RazorpayPaymentVerifyRequest
     ) -> OrderResponse:
@@ -281,8 +309,9 @@ class OrderService:
         resolved_addr = await self._resolve_shipping_address(user_id, req.address_id, req.shipping_address)
 
         # 4. Calculate live cart pricing with active offers
-        pricing = await self._calculate_cart_pricing(user_id, req.coupon_code)
+        pricing = await self._calculate_cart_pricing(db, user_id, req.coupon_code)
         cart_id = pricing["cart_id"]
+        currency = pricing.get("currency") or "INR"
 
         # 5. Atomically commit order and order_items with offer details, then hard-delete cart items
         async with get_transaction() as conn:
@@ -295,7 +324,7 @@ class OrderService:
                 shipping_amount=pricing["shipping_amount"],
                 total_amount=pricing["total_amount"],
                 shipping_address=resolved_addr,
-                currency="INR",
+                currency=currency,
                 coupon_code=req.coupon_code,
                 razorpay_order_id=req.razorpay_order_id,
                 razorpay_payment_id=req.razorpay_payment_id,
@@ -338,7 +367,7 @@ class OrderService:
     # GENERAL ORDER CREATION (DIRECT / STANDARD / BACKWARD COMPATIBLE)
     # =========================================================================
 
-    async def create_order(self, user_id: UUID, order_in: OrderCreate) -> OrderResponse:
+    async def create_order(self, db: AsyncSession, user_id: UUID, order_in: OrderCreate) -> OrderResponse:
         """
         Places a new order from current cart.
         If Razorpay payment details are included, verifies signature and marks order confirmed/paid.
@@ -355,7 +384,7 @@ class OrderService:
                 shipping_address=order_in.shipping_address,
                 coupon_code=order_in.coupon_code
             )
-            return await self.verify_and_complete_order(user_id, verify_req)
+            return await self.verify_and_complete_order(db, user_id, verify_req)
 
         # 1. Resolve shipping address
         resolved_addr = await self._resolve_shipping_address(
@@ -365,12 +394,14 @@ class OrderService:
         )
 
         # 2. Calculate cart pricing with offers
-        pricing = await self._calculate_cart_pricing(user_id, order_in.coupon_code)
+        pricing = await self._calculate_cart_pricing(db, user_id, order_in.coupon_code)
         cart_id = pricing["cart_id"]
 
         # Default statuses
         status_val = OrderStatus.CONFIRMED.value
         payment_status_val = PaymentStatus.PENDING.value
+
+        currency = pricing.get("currency") or "INR"
 
         # 3. Atomically commit order, items, and hard-delete cart items
         async with get_transaction() as conn:
@@ -383,7 +414,7 @@ class OrderService:
                 shipping_amount=pricing["shipping_amount"],
                 total_amount=pricing["total_amount"],
                 shipping_address=resolved_addr,
-                currency="INR",
+                currency=currency,
                 coupon_code=order_in.coupon_code,
                 razorpay_order_id=order_in.razorpay_order_id,
                 razorpay_payment_id=order_in.razorpay_payment_id,

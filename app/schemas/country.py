@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
@@ -7,6 +8,8 @@ from pydantic import BaseModel, Field, field_validator
 class CountryBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="Country name", examples=["India", "United States"])
     code: str = Field(..., min_length=1, max_length=20, description="Country code (ISO 2/3 letter code or ISO standard)", examples=["IN", "US"])
+    rate_from_usd: Optional[Decimal] = Field(None, description="Exchange rate relative to 1 USD")
+    exchange_available: bool = Field(False, description="Whether currency exchange is available")
     is_active: bool = Field(True, description="Whether the country is active for shipping and address selection")
 
     @field_validator("name")
@@ -33,6 +36,8 @@ class CountryCreate(CountryBase):
 class CountryUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100, description="Country name")
     code: Optional[str] = Field(None, min_length=1, max_length=20, description="Country code")
+    rate_from_usd: Optional[Decimal] = Field(None, description="Exchange rate relative to 1 USD")
+    exchange_available: Optional[bool] = Field(None, description="Whether currency exchange is available")
     is_active: Optional[bool] = Field(None, description="Active status")
 
     @field_validator("name")
@@ -63,3 +68,10 @@ class CountryResponse(CountryBase):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class LocationResponse(BaseModel):
+    country_code: str
+    exchange_rate: Optional[float] = None
+    exchange_available: bool = False
+    country_name: Optional[str] = None

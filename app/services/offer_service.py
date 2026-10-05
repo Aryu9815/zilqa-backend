@@ -3,6 +3,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 import asyncpg
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
 from app.repositories.offer_repository import offer_repository
@@ -30,7 +31,7 @@ class OfferService:
     # ADMIN CRUD OPERATIONS
     # =========================================================================
 
-    async def create_offer(self, offer_in: OfferCreate) -> OfferResponse:
+    async def create_offer(self, db: AsyncSession, offer_in: OfferCreate) -> OfferResponse:
         # 1. Validate coupon code uniqueness if provided
         if offer_in.coupon_code:
             existing = await offer_repository.get_by_coupon_code(offer_in.coupon_code, is_active_only=False)
@@ -43,6 +44,7 @@ class OfferService:
         # 2. Validate product IDs exist
         if offer_in.product_ids:
             found_prods = await product_repository.get_by_ids(
+                db,
                 offer_in.product_ids,
                 is_active_only=False,
                 include_deleted=False
@@ -89,7 +91,7 @@ class OfferService:
         pagination = calculate_pagination(total=total, page=page, limit=limit)
         return PaginatedResponse(data=items, pagination=pagination)
 
-    async def update_offer(self, offer_id: UUID, offer_in: OfferUpdate) -> OfferResponse:
+    async def update_offer(self, db: AsyncSession, offer_id: UUID, offer_in: OfferUpdate) -> OfferResponse:
         existing = await offer_repository.get_by_id(offer_id, include_deleted=False)
         if not existing:
             raise NotFoundException(message="Offer not found", error_code="OFFER_NOT_FOUND")
@@ -106,6 +108,7 @@ class OfferService:
         # Validate product IDs if changing
         if offer_in.product_ids is not None and offer_in.product_ids:
             found_prods = await product_repository.get_by_ids(
+                db,
                 offer_in.product_ids,
                 is_active_only=False,
                 include_deleted=False

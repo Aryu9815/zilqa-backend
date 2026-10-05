@@ -73,8 +73,29 @@ def test_auth_schemas_validation():
 
 
 @pytest.mark.asyncio
+async def test_get_country_from_local_ip_returns_none():
+    from app.utils.helpers import get_country_from_ip
+    cc = await get_country_from_ip("127.0.0.1")
+    assert cc is None
+
+    cc_none = await get_country_from_ip(None)
+    assert cc_none is None
+
+
+def test_jwt_token_lifecycle_with_country_code():
+    user_id = "a0000000-0000-0000-0000-000000000001"
+    token = create_access_token(subject=user_id, additional_claims={"country_code": "US"})
+    
+    payload = decode_token(token)
+    assert payload["sub"] == user_id
+    assert payload["country_code"] == "US"
+    assert payload["type"] == "access"
+
+
+@pytest.mark.asyncio
 async def test_health_check_endpoint(client: AsyncClient):
     response = await client.get("/health")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
+

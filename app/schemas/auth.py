@@ -28,10 +28,12 @@ class UserSummaryResponse(BaseModel):
     email: str
     mobile_number: Optional[str] = None
     role: str
+    country_code: Optional[str] = None
 
 
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     refresh_token: Optional[str] = None
+    country_code: Optional[str] = None
     user: UserSummaryResponse

@@ -1,5 +1,5 @@
 from typing import Any, Dict, Optional
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from app.core.dependencies import get_current_user, require_authenticated_user
 from app.schemas.auth import (
     GoogleLoginRequest,
@@ -11,6 +11,8 @@ from app.schemas.auth import (
 from app.schemas.common import ResponseEnvelope
 from app.schemas.user import UserResponse
 from app.services.auth_service import auth_service
+from app.services.country_service import country_service
+from app.utils.helpers import get_client_ip, get_country_from_ip
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -21,9 +23,17 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
     status_code=status.HTTP_201_CREATED,
     summary="Register a new customer account"
 )
-async def register(register_in: RegisterRequest) -> ResponseEnvelope[TokenResponse]:
+async def register(
+    register_in: RegisterRequest,
+    request: Request
+) -> ResponseEnvelope[TokenResponse]:
     """Register a new customer user and issue an initial access/refresh token pair."""
-    token_response = await auth_service.register(register_in)
+    ip = get_client_ip(request)
+    country_code = await get_country_from_ip(ip)
+    token_response = await auth_service.register(
+        register_in,
+        country_code=country_code
+    )
     return ResponseEnvelope(
         success=True,
         message="Account registered successfully",
@@ -36,9 +46,18 @@ async def register(register_in: RegisterRequest) -> ResponseEnvelope[TokenRespon
     response_model=ResponseEnvelope[TokenResponse],
     summary="Authenticate user and get access token"
 )
-async def login(login_in: LoginRequest) -> ResponseEnvelope[TokenResponse]:
+async def login(
+    login_in: LoginRequest,
+    request: Request
+) -> ResponseEnvelope[TokenResponse]:
     """Authenticate with email and password to receive access & refresh tokens."""
-    token_response = await auth_service.login(login_in)
+    ip = get_client_ip(request)
+    country_code = await get_country_from_ip(ip)
+    print('country code', country_code)
+    token_response = await auth_service.login(
+        login_in,
+        country_code=country_code
+    )
     return ResponseEnvelope(
         success=True,
         message="Login successful",
@@ -51,10 +70,17 @@ async def login(login_in: LoginRequest) -> ResponseEnvelope[TokenResponse]:
     response_model=ResponseEnvelope[TokenResponse],
     summary="Authenticate user with Google Sign-In"
 )
-async def google_login(login_in: GoogleLoginRequest) -> ResponseEnvelope[TokenResponse]:
+async def google_login(
+    login_in: GoogleLoginRequest,
+    request: Request
+) -> ResponseEnvelope[TokenResponse]:
     """Authenticate or register with verified Google ID token credential to receive access & refresh tokens."""
-    print("api received: ", login_in.credential)
-    token_response = await auth_service.google_login(login_in.credential)
+    ip = get_client_ip(request)
+    country_code = await get_country_from_ip(ip)
+    token_response = await auth_service.google_login(
+        login_in.credential,
+        country_code=country_code
+    )
     return ResponseEnvelope(
         success=True,
         message="Google login successful",
@@ -67,9 +93,17 @@ async def google_login(login_in: GoogleLoginRequest) -> ResponseEnvelope[TokenRe
     response_model=ResponseEnvelope[TokenResponse],
     summary="Rotate and refresh JWT access token"
 )
-async def refresh_token(request_in: RefreshTokenRequest) -> ResponseEnvelope[TokenResponse]:
+async def refresh_token(
+    request_in: RefreshTokenRequest,
+    request: Request
+) -> ResponseEnvelope[TokenResponse]:
     """Exchange a valid refresh token for a fresh token pair (rotating the refresh token)."""
-    token_response = await auth_service.refresh_token(request_in.refresh_token)
+    ip = get_client_ip(request)
+    country_code = await get_country_from_ip(ip)
+    token_response = await auth_service.refresh_token(
+        request_in.refresh_token,
+        country_code=country_code
+    )
     return ResponseEnvelope(
         success=True,
         message="Token refreshed successfully",
@@ -110,3 +144,43 @@ async def get_me(
         message="Profile fetched successfully",
         data=UserResponse.model_validate(current_user)
     )
+
+
+@router.get(
+    "/location",
+    summary="Get user location and exchange rate based on IP (No login required)"
+)
+async def get_location(
+    request: Request,
+    country_code: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Detect user's country from IP (defaults to US if not detected)
+    and return exchange rate if available in countries table.
+    Does not require login.
+    """
+    if not country_code:
+        ip = get_client_ip(request)
+        country_code = await get_country_from_ip(ip)
+
+    if not country_code:
+        country_code = "US"
+    else:
+        country_code = country_code.strip().upper()
+
+    currency = await country_service.get_exchange_rate_for_country(country_code)
+    exchange_rate = currency["exchange_rate"] if currency else None
+    exchange_available = currency["exchange_available"] if currency else False
+
+    return {
+        "success": True,
+        "message": "Location retrieved successfully",
+        "country_code": country_code,
+        "exchange_rate": exchange_rate,
+        "exchange_available": exchange_available,
+        "data": {
+            "country_code": country_code,
+            "exchange_rate": exchange_rate,
+            "exchange_available": exchange_available,
+        }
+    }

@@ -1,6 +1,7 @@
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import BadRequestException, NotFoundException
 from app.repositories.cart_repository import cart_repository
@@ -17,6 +18,14 @@ from app.schemas.cart import (
 )
 from app.schemas.offer import OfferBriefResponse, OfferType
 from app.services.offer_service import offer_service, round_money
+from app.repositories.user_repository import user_repository
+from app.repositories.country_repository import country_repository
+from app.services.country_service import country_service
+from app.utils.helpers import (
+    get_currency_for_country,
+    get_country_name_for_code,
+    get_user_currency_and_rate,
+)
 
 
 class CartService:
@@ -31,6 +40,9 @@ class CartService:
         into cart_items, validates/calculates coupon code if present, calculates delivery charges
         and grand totals, and persists them into the carts table.
         """
+        currency, rate, country_code, country_name, exchange_available = await get_user_currency_and_rate(
+            user_id, user_repository, country_repository
+        )
         active_offers = await offer_repository.get_active_offers()
         items_records = await cart_repository.get_cart_items_with_products(cart_id)
 
@@ -38,7 +50,8 @@ class CartService:
         product_discount_total = Decimal("0.00")
 
         for r in items_records:
-            original_price = Decimal(str(r["product_price"]))
+            base_price = Decimal(str(r["product_price"]))
+            original_price = round_money(base_price * rate)
             qty = int(r["quantity"])
 
             offer_id, offer_data, disc_unit, discounted_unit_p, final_unit_p = (
@@ -53,7 +66,7 @@ class CartService:
             disc_val = Decimal(str(offer_data.discount_value)) if offer_data else None
             item_total = round_money(final_unit_p * qty)
 
-            # Persist item offer and pricing to cart_items table
+            # Persist item offer and pricing to cart_items table in user's currency
             await cart_repository.update_item_offer_and_pricing(
                 item_id=r["id"],
                 offer_id=offer_id,
@@ -99,10 +112,9 @@ class CartService:
         else:
             coupon_code_to_save = None
 
-        # Delivery & shipping calculation
-        # Free delivery threshold = $150.00, standard shipping fee = $15.00
-        free_delivery_threshold = Decimal("150.00")
-        standard_delivery_fee = Decimal("15.00")
+        # Delivery & shipping calculation in user's currency
+        free_delivery_threshold = round_money(Decimal("150.00") * rate)
+        standard_delivery_fee = round_money(Decimal("15.00") * rate)
 
         if net_items_amount == Decimal("0.00"):
             shipping_amount = Decimal("0.00")
@@ -202,6 +214,10 @@ class CartService:
         shipping_amount = Decimal(str(cart_record["shipping_amount"] or "0.00"))
         total_amount = Decimal(str(cart_record["total_amount"] or "0.00"))
 
+        user = await user_repository.get_by_id(user_id)
+        user_country_code = user["country_code"].strip().upper() if user and user.get("country_code") else None
+        currency = get_currency_for_country(user_country_code)
+
         return CartResponse(
             id=cart_id,
             items=cart_items,
@@ -215,21 +231,26 @@ class CartService:
             shipping_amount=shipping_amount,
             total_amount=total_amount,
             final_amount=total_amount,
-            applied_offer=applied_offer
+            applied_offer=applied_offer,
+            currency=currency,
+            country_code=user_country_code,
         )
 
-    async def add_item_to_cart(self, user_id: UUID, product_id: UUID, quantity: int) -> CartResponse:
-        product = await product_repository.get_by_id(product_id)
+    async def add_item_to_cart(self, db: AsyncSession, user_id: UUID, product_id: UUID, quantity: int) -> CartResponse:
+        product = await product_repository.get_by_id(db, product_id)
         if not product:
             raise NotFoundException(message="Product not found", error_code="PRODUCT_NOT_FOUND")
 
-        if not product["is_active"] or product.get("is_deleted", False):
+        is_act = getattr(product, "is_active", None) if hasattr(product, "is_active") else product.get("is_active")
+        is_del = getattr(product, "is_deleted", False) if hasattr(product, "is_deleted") else product.get("is_deleted", False)
+        if not is_act or is_del:
             raise BadRequestException(
                 message="This product is currently inactive and cannot be added to cart",
                 error_code="PRODUCT_INACTIVE"
             )
 
-        orig_price = Decimal(str(product["price"]))
+        raw_price = getattr(product, "price", None) if hasattr(product, "price") else product.get("price")
+        orig_price = Decimal(str(raw_price))
         active_offers = await offer_repository.get_active_offers()
         offer_id, offer_data, disc_unit, _, final_unit_p = (
             offer_service.calculate_single_product_offer(
@@ -263,7 +284,7 @@ class CartService:
         await self._refresh_and_persist_cart_state(cart_id, user_id)
         return await self.get_user_cart(user_id)
 
-    async def update_cart_item(self, user_id: UUID, item_id: UUID, quantity: int) -> CartResponse:
+    async def update_cart_item(self, db: AsyncSession, user_id: UUID, item_id: UUID, quantity: int) -> CartResponse:
         cart_record = await cart_repository.get_cart_by_user(user_id)
         if not cart_record:
             raise NotFoundException(message="Cart not found", error_code="CART_NOT_FOUND")
@@ -274,7 +295,7 @@ class CartService:
             raise NotFoundException(message="Cart item not found", error_code="CART_ITEM_NOT_FOUND")
 
         # Check product status
-        product = await product_repository.get_by_id(item["product_id"])
+        product = await product_repository.get_by_id(db, item["product_id"])
         if not product or not product["is_active"] or product.get("is_deleted", False):
             raise BadRequestException(
                 message="Product is no longer active",
@@ -395,8 +416,9 @@ class CartService:
 
     async def calculate_live_bill(
         self,
+        db: AsyncSession,
         user_id: Optional[UUID],
-        req: LiveBillRequest
+        req: LiveBillRequest,
     ) -> LiveBillResponse:
         """
         Calculates live bill for cart checkout.
@@ -409,6 +431,11 @@ class CartService:
         net_items_amount = Decimal("0.00")
         total_items_count = 0
 
+        # Determine user country data and exchange rate from user table if user_id is provided
+        currency, rate, user_country_code, user_country_name, exchange_available = await get_user_currency_and_rate(
+            user_id, user_repository, country_repository
+        )
+
         # Determine coupon code to evaluate
         requested_coupon = req.coupon_code.strip().upper() if req.coupon_code and req.coupon_code.strip() else None
 
@@ -416,8 +443,8 @@ class CartService:
             # Dynamic calculation from explicit items (e.g. guest cart or preview)
             if req.items:
                 prod_ids = [it.product_id for it in req.items if it.quantity > 0]
-                found_prods = await product_repository.get_by_ids(prod_ids, is_active_only=True, include_deleted=False)
-                prod_map = {r["id"]: r for r in found_prods}
+                found_prods = await product_repository.get_by_ids(db, prod_ids, is_active_only=True, include_deleted=False)
+                prod_map = {getattr(r, "id", None) or (r["id"] if isinstance(r, dict) or hasattr(r, "__getitem__") else None): r for r in found_prods}
 
                 for it in req.items:
                     if it.quantity <= 0:
@@ -426,7 +453,9 @@ class CartService:
                     if not product:
                         continue
 
-                    orig_price = Decimal(str(product["price"]))
+                    raw_price = getattr(product, "price", None) or (product["price"] if isinstance(product, dict) or hasattr(product, "__getitem__") else 0)
+                    base_price = Decimal(str(raw_price))
+                    orig_price = round_money(base_price * rate)
                     qty = it.quantity
                     offer_id, offer_data, disc_unit, discounted_unit_p, final_unit_p = (
                         offer_service.calculate_single_product_offer(
@@ -445,11 +474,14 @@ class CartService:
                     net_items_amount += net_sub
                     total_items_count += qty
 
+                    prod_name = getattr(product, "name", None) or (product["name"] if isinstance(product, dict) or hasattr(product, "__getitem__") else "")
+                    prod_img = getattr(product, "main_image_url", None) or (product.get("main_image_url") if isinstance(product, dict) or hasattr(product, "get") else None)
+
                     bill_items.append(
                         BillItemDetail(
                             product_id=it.product_id,
-                            product_name=product["name"],
-                            product_image_url=product.get("main_image_url"),
+                            product_name=prod_name,
+                            product_image_url=prod_img,
                             quantity=qty,
                             original_unit_price=orig_price,
                             product_discount_unit=disc_unit,
@@ -547,9 +579,9 @@ class CartService:
         elif coupon_to_check and net_items_amount == Decimal("0.00"):
             coupon_message = "Cart is empty"
 
-        # Delivery charges calculation
-        free_delivery_threshold = Decimal("150.00")
-        standard_delivery_fee = Decimal("15.00")
+        # Delivery charges calculation in user's currency
+        free_delivery_threshold = round_money(Decimal("150.00") * rate)
+        standard_delivery_fee = round_money(Decimal("15.00") * rate)
 
         if net_items_amount == Decimal("0.00"):
             delivery_charge = Decimal("0.00")
@@ -606,7 +638,11 @@ class CartService:
             total_savings_amount=total_savings_amount,
             total_savings_percentage=total_savings_pct,
             total_amount=total_payable,
-            currency="USD"
+            currency=currency,
+            country_code=user_country_code,
+            country_name=user_country_name,
+            exchange_rate=rate,
+            exchange_available=exchange_available,
         )
 
 

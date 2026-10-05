@@ -1,8 +1,10 @@
 from typing import Any, Dict, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_optional_current_user, require_authenticated_user
+from app.db.database import get_db
 from app.schemas.cart import (
     ApplyCouponRequest,
     CartItemCreate,
@@ -24,10 +26,11 @@ router = APIRouter(prefix="/cart", tags=["Cart"])
 )
 async def calculate_bill(
     req: LiveBillRequest,
-    current_user: Optional[Dict[str, Any]] = Depends(get_optional_current_user)
+    current_user: Optional[Dict[str, Any]] = Depends(get_optional_current_user),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[LiveBillResponse]:
     user_id = current_user["id"] if current_user else None
-    bill = await cart_service.calculate_live_bill(user_id=user_id, req=req)
+    bill = await cart_service.calculate_live_bill(user_id=user_id, req=req, db=db)
     return ResponseEnvelope(
         success=True,
         message="Live bill calculated successfully",
@@ -59,9 +62,11 @@ async def get_cart(
 )
 async def add_item_to_cart(
     item_in: CartItemCreate,
-    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[CartResponse]:
     cart = await cart_service.add_item_to_cart(
+        db=db,
         user_id=current_user["id"],
         product_id=item_in.product_id,
         quantity=item_in.quantity
@@ -81,9 +86,11 @@ async def add_item_to_cart(
 async def update_cart_item(
     item_id: UUID,
     item_in: CartItemUpdate,
-    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[CartResponse]:
     cart = await cart_service.update_cart_item(
+        db=db,
         user_id=current_user["id"],
         item_id=item_id,
         quantity=item_in.quantity

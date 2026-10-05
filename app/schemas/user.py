@@ -10,6 +10,7 @@ class UserResponse(BaseModel):
     email: EmailStr
     role: str
     is_active: bool
+    country_code: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -19,5 +20,6 @@ class UserResponse(BaseModel):
 class UserUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=2, max_length=150)
     email: Optional[EmailStr] = None
+    country_code: Optional[str] = None
     current_password: Optional[str] = Field(None, min_length=6)
     new_password: Optional[str] = Field(None, min_length=6, max_length=128)

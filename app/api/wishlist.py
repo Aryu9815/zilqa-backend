@@ -1,8 +1,10 @@
 from typing import Any, Dict
 from uuid import UUID
 from fastapi import APIRouter, Depends, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import require_authenticated_user
+from app.db.database import get_db
 from app.schemas.common import ResponseEnvelope
 from app.schemas.wishlist import WishlistResponse
 from app.services.wishlist_service import wishlist_service
@@ -34,9 +36,10 @@ async def get_wishlist(
 )
 async def add_to_wishlist(
     product_id: UUID,
-    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[WishlistResponse]:
-    wishlist = await wishlist_service.add_to_wishlist(current_user["id"], product_id)
+    wishlist = await wishlist_service.add_to_wishlist(db, current_user["id"], product_id)
     return ResponseEnvelope(
         success=True,
         message="Product added to wishlist successfully",

@@ -2,8 +2,10 @@ from decimal import Decimal
 from typing import Any, Dict, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_optional_current_user, require_admin
+from app.db.database import get_db
 from app.schemas.common import PaginatedResponse, ResponseEnvelope
 from app.schemas.offer import (
     CouponValidateRequest,
@@ -93,10 +95,11 @@ async def validate_coupon(
 )
 async def create_offer(
     offer_in: OfferCreate,
-    current_admin: Dict[str, Any] = Depends(require_admin)
+    current_admin: Dict[str, Any] = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[OfferResponse]:
     """Create a new offer with strict validation of the 11 allowed offer types."""
-    offer = await offer_service.create_offer(offer_in)
+    offer = await offer_service.create_offer(db, offer_in)
     return ResponseEnvelope(
         success=True,
         message="Offer created successfully",
@@ -153,10 +156,11 @@ async def admin_get_offer(
 async def update_offer(
     offer_id: UUID,
     offer_in: OfferUpdate,
-    current_admin: Dict[str, Any] = Depends(require_admin)
+    current_admin: Dict[str, Any] = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[OfferResponse]:
     """Update offer attributes, discount terms, or linked products/categories."""
-    updated = await offer_service.update_offer(offer_id, offer_in)
+    updated = await offer_service.update_offer(db, offer_id, offer_in)
     return ResponseEnvelope(
         success=True,
         message="Offer updated successfully",

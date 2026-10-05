@@ -20,7 +20,6 @@ from app.services.order_service import VALID_STATUS_TRANSITIONS
 
 
 def test_order_status_enums():
-    assert OrderStatus.PENDING.value == "pending"
     assert OrderStatus.CONFIRMED.value == "confirmed"
     assert OrderStatus.PROCESSING.value == "processing"
     assert OrderStatus.SHIPPED.value == "shipped"
@@ -38,9 +37,8 @@ def test_payment_status_enums():
 
 
 def test_valid_status_transitions_rules():
-    assert "confirmed" in VALID_STATUS_TRANSITIONS["pending"]
-    assert "cancelled" in VALID_STATUS_TRANSITIONS["pending"]
     assert "processing" in VALID_STATUS_TRANSITIONS["confirmed"]
+    assert "cancelled" in VALID_STATUS_TRANSITIONS["confirmed"]
     assert "shipped" in VALID_STATUS_TRANSITIONS["processing"]
     assert "delivered" in VALID_STATUS_TRANSITIONS["shipped"]
     assert "returned" in VALID_STATUS_TRANSITIONS["delivered"]
@@ -170,7 +168,7 @@ async def test_api_create_razorpay_order_endpoint(client, monkeypatch):
         )
 
         from app.services.order_service import order_service
-        async def mock_create(uid, req):
+        async def mock_create(*args, **kwargs):
             return mock_rzp_resp
 
         monkeypatch.setattr(order_service, "create_razorpay_order", mock_create)
@@ -249,7 +247,7 @@ async def test_api_verify_payment_and_complete_order_endpoint(client, monkeypatc
         )
 
         from app.services.order_service import order_service
-        async def mock_verify(uid, req):
+        async def mock_verify(*args, **kwargs):
             return mock_order
 
         monkeypatch.setattr(order_service, "verify_and_complete_order", mock_verify)

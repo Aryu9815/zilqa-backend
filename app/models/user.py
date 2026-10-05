@@ -23,8 +23,20 @@ class User(Base):
     otp: Mapped[Optional[str]] = mapped_column(String)
     otp_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
+    country_code: Mapped[Optional[str]] = mapped_column(String(25), nullable=True)
+    role: Mapped[Optional[str]] = mapped_column(String, nullable=True, default="customer")
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.current_timestamp())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
+
+    def __getitem__(self, item: str):
+        return getattr(self, item)
+
+    def get(self, item: str, default=None):
+        return getattr(self, item, default)
+
+    def keys(self):
+        return [c.name for c in self.__table__.columns]
 
     addresses: Mapped[List["UserAddress"]] = relationship("UserAddress", back_populates="user")
     carts: Mapped[List["Cart"]] = relationship("Cart", back_populates="user")

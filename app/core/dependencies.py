@@ -38,7 +38,7 @@ async def get_current_user(
         raise UnauthorizedException(message="Invalid user identifier in token", error_code="INVALID_USER_ID")
 
     query = """
-        SELECT id, name, email, role, is_active, created_at, updated_at
+        SELECT id, name, email, role, is_active, country_code, created_at, updated_at
         FROM users
         WHERE id = $1
     """

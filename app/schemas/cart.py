@@ -81,6 +81,8 @@ class CartResponse(BaseModel):
     total_amount: Decimal = Decimal("0.00")
     final_amount: Decimal = Decimal("0.00")
     applied_offer: Optional[OfferBriefResponse] = None
+    currency: str = "USD"
+    country_code: Optional[str] = None
 
     @model_validator(mode="after")
     def compute_defaults(self) -> "CartResponse":
@@ -170,5 +172,9 @@ class LiveBillResponse(BaseModel):
     total_savings_percentage: Decimal = Decimal("0.00")
     total_amount: Decimal = Decimal("0.00")
     currency: str = "USD"
+    country_code: Optional[str] = None
+    country_name: Optional[str] = None
+    exchange_rate: Optional[Decimal] = None
+    exchange_available: Optional[bool] = False
 
     model_config = {"from_attributes": True}

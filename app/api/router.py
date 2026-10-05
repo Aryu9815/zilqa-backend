@@ -60,3 +60,7 @@ api_router.include_router(orders.admin_router)
 # Admin Dashboard Analytics
 api_router.include_router(analytics.router)
 
+# Public Location & Exchange Rate
+api_router.add_api_route("/location", countries.get_location, methods=["GET"], tags=["Location"], summary="Get user location and exchange rate from IP")
+
+

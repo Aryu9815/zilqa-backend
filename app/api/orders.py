@@ -2,8 +2,10 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import require_admin, require_authenticated_user
+from app.db.database import get_db
 from app.schemas.common import PaginatedResponse, ResponseEnvelope
 from app.schemas.order import (
     OrderCreate,
@@ -34,9 +36,10 @@ admin_router = APIRouter(prefix="/admin/orders", tags=["Admin Orders"])
 )
 async def create_razorpay_order(
     req: RazorpayOrderCreateRequest,
-    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[RazorpayOrderResponse]:
-    rzp_order = await order_service.create_razorpay_order(current_user["id"], req)
+    rzp_order = await order_service.create_razorpay_order(db, current_user["id"], req)
     return ResponseEnvelope(
         success=True,
         message="Razorpay order initialized successfully",
@@ -52,9 +55,10 @@ async def create_razorpay_order(
 )
 async def verify_razorpay_payment(
     req: RazorpayPaymentVerifyRequest,
-    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[OrderResponse]:
-    order = await order_service.verify_and_complete_order(current_user["id"], req)
+    order = await order_service.verify_and_complete_order(db, current_user["id"], req)
     return ResponseEnvelope(
         success=True,
         message="Payment verified and order placed successfully",
@@ -70,9 +74,10 @@ async def verify_razorpay_payment(
 )
 async def create_order(
     order_in: OrderCreate,
-    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[OrderResponse]:
-    order = await order_service.create_order(current_user["id"], order_in)
+    order = await order_service.create_order(db, current_user["id"], order_in)
     return ResponseEnvelope(
         success=True,
         message="Order placed successfully",

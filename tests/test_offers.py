@@ -688,7 +688,7 @@ async def test_api_admin_create_offer_success(client, monkeypatch):
             is_active=True,
         )
 
-        async def mock_create(offer_in):
+        async def mock_create(*args, **kwargs):
             return mock_resp
 
         monkeypatch.setattr(offer_service, "create_offer", mock_create)

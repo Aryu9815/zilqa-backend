@@ -179,3 +179,156 @@ def test_live_bill_response_structure():
     assert bill.coupon_discount_amount == Decimal("18.00")
     assert bill.total_amount == Decimal("162.00")
     assert bill.is_coupon_applied is True
+
+
+def test_cart_response_includes_country_and_currency():
+    cart = CartResponse(
+        id=uuid4(),
+        currency="INR",
+        country_code="IN",
+        total_items=1,
+        subtotal=Decimal("1000.00"),
+        total_amount=Decimal("1000.00")
+    )
+    assert cart.currency == "INR"
+    assert cart.country_code == "IN"
+
+
+def test_live_bill_response_includes_country_and_currency():
+    bill = LiveBillResponse(
+        currency="INR",
+        country_code="IN",
+        country_name="India",
+        exchange_rate=Decimal("83.50"),
+        exchange_available=True,
+        total_amount=Decimal("5000.00")
+    )
+    assert bill.currency == "INR"
+    assert bill.country_code == "IN"
+    assert bill.country_name == "India"
+    assert bill.exchange_rate == Decimal("83.50")
+    assert bill.exchange_available is True
+
+
+@pytest.mark.asyncio
+async def test_calculate_live_bill_uses_user_country(monkeypatch):
+    from unittest.mock import AsyncMock
+    from app.services.cart_service import cart_service
+    from app.repositories.user_repository import user_repository
+    from app.repositories.offer_repository import offer_repository
+    from app.repositories.product_repository import product_repository
+    from app.repositories.country_repository import country_repository
+    from app.schemas.cart import LiveBillRequest, BillCartItemInput
+
+    mock_user_id = uuid4()
+    mock_prod_id = uuid4()
+    mock_user = {
+        "id": mock_user_id,
+        "name": "Test User",
+        "email": "test@example.com",
+        "country_code": "IN"
+    }
+
+    mock_country = {
+        "code": "IN",
+        "name": "India",
+        "rate_from_usd": Decimal("83.50"),
+        "exchange_available": True
+    }
+
+    mock_product = {
+        "id": mock_prod_id,
+        "name": "Solitaire Ring",
+        "price": Decimal("100.00"),
+        "main_image_url": "https://example.com/ring.jpg",
+        "is_active": True,
+        "is_deleted": False
+    }
+
+    monkeypatch.setattr(user_repository, "get_by_id", AsyncMock(return_value=mock_user))
+    monkeypatch.setattr(country_repository, "get_by_code", AsyncMock(return_value=mock_country))
+    monkeypatch.setattr(product_repository, "get_by_ids", AsyncMock(return_value=[mock_product]))
+    monkeypatch.setattr(offer_repository, "get_active_offers", AsyncMock(return_value=[]))
+
+    mock_db = AsyncMock()
+    req = LiveBillRequest(items=[BillCartItemInput(product_id=mock_prod_id, quantity=1)])
+    bill = await cart_service.calculate_live_bill(db=mock_db, user_id=mock_user_id, req=req)
+
+    assert bill.country_code == "IN"
+    assert bill.country_name == "India"
+    assert bill.currency == "INR"
+    assert bill.exchange_available is True
+    assert bill.exchange_rate == Decimal("83.50")
+    # Subtotal in INR: 100 * 83.50 = 8350.00
+    assert bill.subtotal_amount == Decimal("8350.00")
+    assert bill.items[0].original_unit_price == Decimal("8350.00")
+
+
+@pytest.mark.asyncio
+async def test_order_pricing_calculated_in_user_currency(monkeypatch):
+    from unittest.mock import AsyncMock
+    from app.services.order_service import order_service
+    from app.repositories.user_repository import user_repository
+    from app.repositories.cart_repository import cart_repository
+    from app.repositories.product_repository import product_repository
+    from app.repositories.country_repository import country_repository
+    from app.repositories.offer_repository import offer_repository
+
+    mock_user_id = uuid4()
+    mock_cart_id = uuid4()
+    mock_prod_id = uuid4()
+
+    mock_user = {
+        "id": mock_user_id,
+        "name": "Test User",
+        "email": "test@example.com",
+        "country_code": "IN"
+    }
+
+    mock_country = {
+        "code": "IN",
+        "name": "India",
+        "rate_from_usd": Decimal("83.50"),
+        "exchange_available": True
+    }
+
+    mock_cart = {
+        "id": mock_cart_id,
+        "user_id": mock_user_id,
+        "coupon_code": None
+    }
+
+    mock_cart_item = {
+        "id": uuid4(),
+        "cart_id": mock_cart_id,
+        "product_id": mock_prod_id,
+        "quantity": 2,
+        "product_name": "Diamond Ring"
+    }
+
+    mock_product = {
+        "id": mock_prod_id,
+        "name": "Diamond Ring",
+        "price": Decimal("50.00"),
+        "main_image_url": "https://example.com/ring.jpg",
+        "is_active": True,
+        "is_deleted": False
+    }
+
+    monkeypatch.setattr(user_repository, "get_by_id", AsyncMock(return_value=mock_user))
+    monkeypatch.setattr(country_repository, "get_by_code", AsyncMock(return_value=mock_country))
+    monkeypatch.setattr(cart_repository, "get_or_create_cart", AsyncMock(return_value=mock_cart))
+    monkeypatch.setattr(cart_repository, "get_cart_items_with_products", AsyncMock(return_value=[mock_cart_item]))
+    monkeypatch.setattr(product_repository, "get_by_id", AsyncMock(return_value=mock_product))
+    monkeypatch.setattr(offer_repository, "get_active_offers", AsyncMock(return_value=[]))
+
+    mock_db = AsyncMock()
+    pricing = await order_service._calculate_cart_pricing(mock_db, mock_user_id)
+
+    assert pricing["currency"] == "INR"
+    assert pricing["country_code"] == "IN"
+    # Price in USD: $50 * 2 = $100. In INR: 100 * 83.50 = 8350.00
+    assert pricing["subtotal"] == Decimal("8350.00")
+
+
+
