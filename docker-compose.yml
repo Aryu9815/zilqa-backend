@@ -1,43 +1,21 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: ecommerce-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: ecommerce
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./database/indexes.sql:/docker-entrypoint-initdb.d/02-indexes.sql:ro
-      - ./database/constraints.sql:/docker-entrypoint-initdb.d/03-constraints.sql:ro
-      - ./database/seed.sql:/docker-entrypoint-initdb.d/04-seed.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ecommerce"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ecommerce-api
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ecommerce
-      - ENVIRONMENT=production
-      - DEBUG=False
-      - HOST=0.0.0.0
-      - PORT=8000
-    depends_on:
-      postgres:
-        condition: service_healthy
 
-volumes:
-  postgres_data:
+    container_name: zilqa-api
+
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:8000:8000"
+
+    env_file:
+      - .env
+
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "False"
+      HOST: 0.0.0.0
+      PORT: 8000
