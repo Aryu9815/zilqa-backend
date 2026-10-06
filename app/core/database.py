@@ -21,6 +21,7 @@ async def init_db_pool() -> asyncpg.Pool:
             max_size=settings.DB_POOL_MAX_SIZE,
             max_inactive_connection_lifetime=settings.DB_POOL_MAX_INACTIVE_CONNECTION_LIFETIME,
             timeout=settings.DB_POOL_TIMEOUT,
+            ssl="require",
         )
         logger.info("asyncpg connection pool initialized successfully.")
     return _pool
