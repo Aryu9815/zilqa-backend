@@ -27,7 +27,7 @@ class UserSummaryResponse(BaseModel):
     name: str
     email: str
     mobile_number: Optional[str] = None
-    role: str
+    role: str = "customer"
     country_code: Optional[str] = None
 
 

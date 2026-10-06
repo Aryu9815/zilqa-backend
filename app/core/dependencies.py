@@ -38,7 +38,7 @@ async def get_current_user(
         raise UnauthorizedException(message="Invalid user identifier in token", error_code="INVALID_USER_ID")
 
     query = """
-        SELECT id, name, email, role, is_active, country_code, created_at, updated_at
+        SELECT id, name, email, is_active, country_code, created_at, updated_at
         FROM users
         WHERE id = $1
     """
@@ -50,7 +50,9 @@ async def get_current_user(
     if not user["is_active"]:
         raise ForbiddenException(message="User account is deactivated", error_code="USER_INACTIVE")
 
-    return dict(user)
+    user_dict = dict(user)
+    user_dict["role"] = "customer"
+    return user_dict
 
 
 async def require_authenticated_user(

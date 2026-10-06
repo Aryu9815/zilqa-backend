@@ -59,3 +59,4 @@ test.py
 insert_products.sql
 .mypy_cache/
 uploads/
+images-data.txt

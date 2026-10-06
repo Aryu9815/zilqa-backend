@@ -30,20 +30,18 @@ async def seed_database() -> None:
             logger.info("Seeding Admin user (admin@example.com / Admin@123)...")
             await conn.execute(
                 """
-                INSERT INTO users (id, name, email, password_hash, role, is_active, created_at, updated_at)
+                INSERT INTO admins (id, name, email, password_hash, is_active, created_at, updated_at)
                 VALUES (
                     'a0000000-0000-0000-0000-000000000001',
                     'System Administrator',
                     LOWER($1),
                     $2,
-                    'admin',
                     TRUE,
                     CURRENT_TIMESTAMP,
                     CURRENT_TIMESTAMP
                 )
                 ON CONFLICT (email) DO UPDATE
                 SET password_hash = EXCLUDED.password_hash,
-                    role = 'admin',
                     is_active = TRUE,
                     updated_at = CURRENT_TIMESTAMP;
                 """,
@@ -59,13 +57,12 @@ async def seed_database() -> None:
             logger.info("Seeding Customer user (customer@example.com / Customer@123)...")
             await conn.execute(
                 """
-                INSERT INTO users (id, name, email, password_hash, role, is_active, created_at, updated_at)
+                INSERT INTO users (id, name, email, password_hash, is_active, created_at, updated_at)
                 VALUES (
                     'a0000000-0000-0000-0000-000000000002',
                     'John Doe',
                     LOWER($1),
                     $2,
-                    'customer',
                     TRUE,
                     CURRENT_TIMESTAMP,
                     CURRENT_TIMESTAMP

@@ -24,7 +24,7 @@ class AuthService:
     async def _generate_auth_tokens(self, user_record: Any, country_code: Optional[str] = None) -> TokenResponse:
         """Helper to generate JWT access token, store hashed refresh token, set country_code, and return TokenResponse."""
         user_id = user_record["id"]
-        role = user_record.get("role", "customer") if hasattr(user_record, "get") else user_record["role"] if "role" in user_record else "customer"
+        role = "customer"
         mobile_number = user_record.get("mobile_number") if hasattr(user_record, "get") else user_record["mobile_number"] if "mobile_number" in user_record else None
 
         existing_country_code = user_record.get("country_code") if hasattr(user_record, "get") else user_record["country_code"] if "country_code" in user_record else None

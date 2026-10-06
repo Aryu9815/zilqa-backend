@@ -24,19 +24,31 @@ class User(Base):
     otp_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     country_code: Mapped[Optional[str]] = mapped_column(String(25), nullable=True)
-    role: Mapped[Optional[str]] = mapped_column(String, nullable=True, default="customer")
-
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.current_timestamp())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
 
+    @property
+    def role(self) -> str:
+        return "customer"
+
     def __getitem__(self, item: str):
+        if item == "role":
+            return "customer"
         return getattr(self, item)
 
     def get(self, item: str, default=None):
+        if item == "role":
+            return "customer"
         return getattr(self, item, default)
 
     def keys(self):
-        return [c.name for c in self.__table__.columns]
+        cols = [c.name for c in self.__table__.columns]
+        if "role" not in cols:
+            cols.append("role")
+        return cols
+
+    def items(self):
+        return [(k, getattr(self, k, None) if k != "role" else "customer") for k in self.keys()]
 
     addresses: Mapped[List["UserAddress"]] = relationship("UserAddress", back_populates="user")
     carts: Mapped[List["Cart"]] = relationship("Cart", back_populates="user")

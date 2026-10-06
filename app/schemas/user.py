@@ -8,7 +8,7 @@ class UserResponse(BaseModel):
     id: UUID
     name: str
     email: EmailStr
-    role: str
+    role: str = "customer"
     is_active: bool
     country_code: Optional[str] = None
     created_at: datetime

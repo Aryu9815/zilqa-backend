@@ -14,7 +14,7 @@ class UserRepository(BaseRepository):
         connection: Optional[asyncpg.Connection] = None
     ) -> Optional[asyncpg.Record]:
         query = """
-            SELECT id, name, email, mobile_number, password_hash, google_id, role, is_active, country_code, created_at, updated_at
+            SELECT id, name, email, mobile_number, password_hash, google_id, is_active, country_code, created_at, updated_at
             FROM users
             WHERE id = $1
         """
@@ -26,7 +26,7 @@ class UserRepository(BaseRepository):
         connection: Optional[asyncpg.Connection] = None
     ) -> Optional[asyncpg.Record]:
         query = """
-            SELECT id, name, email, mobile_number, password_hash, google_id, role, is_active, country_code, created_at, updated_at
+            SELECT id, name, email, mobile_number, password_hash, google_id, is_active, country_code, created_at, updated_at
             FROM users
             WHERE LOWER(email) = LOWER($1)
             LIMIT 1
@@ -39,7 +39,7 @@ class UserRepository(BaseRepository):
         connection: Optional[asyncpg.Connection] = None
     ) -> Optional[asyncpg.Record]:
         query = """
-            SELECT id, name, email, mobile_number, password_hash, google_id, role, is_active, country_code, created_at, updated_at
+            SELECT id, name, email, mobile_number, password_hash, google_id, is_active, country_code, created_at, updated_at
             FROM users
             WHERE google_id = $1
             LIMIT 1
@@ -51,18 +51,18 @@ class UserRepository(BaseRepository):
         name: str,
         email: str,
         password_hash: Optional[str] = None,
-        role: str = "customer",
+        role: Optional[str] = "customer",
         google_id: Optional[str] = None,
         mobile_number: Optional[str] = None,
         country_code: Optional[str] = None,
         connection: Optional[asyncpg.Connection] = None
     ) -> asyncpg.Record:
         query = """
-            INSERT INTO users (name, email, password_hash, google_id, mobile_number, role, country_code, is_active, created_at, updated_at)
-            VALUES ($1, LOWER($2), $3, $4, $5, $6, $7, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            RETURNING id, name, email, mobile_number, google_id, role, country_code, is_active, created_at, updated_at
+            INSERT INTO users (name, email, password_hash, google_id, mobile_number, country_code, is_active, created_at, updated_at)
+            VALUES ($1, LOWER($2), $3, $4, $5, $6, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id, name, email, mobile_number, google_id, country_code, is_active, created_at, updated_at
         """
-        record = await self.fetch_one(query, name, email, password_hash, google_id, mobile_number, role, country_code, connection=connection)
+        record = await self.fetch_one(query, name, email, password_hash, google_id, mobile_number, country_code, connection=connection)
         assert record is not None
         return record
 
@@ -76,7 +76,7 @@ class UserRepository(BaseRepository):
             UPDATE users
             SET google_id = $1, updated_at = CURRENT_TIMESTAMP
             WHERE id = $2
-            RETURNING id, name, email, mobile_number, google_id, role, country_code, is_active, created_at, updated_at
+            RETURNING id, name, email, mobile_number, google_id, country_code, is_active, created_at, updated_at
         """
         return await self.fetch_one(query, google_id, user_id, connection=connection)
 
@@ -135,7 +135,7 @@ class UserRepository(BaseRepository):
             UPDATE users
             SET {", ".join(updates)}
             WHERE id = ${idx}
-            RETURNING id, name, email, mobile_number, google_id, role, country_code, is_active, created_at, updated_at
+            RETURNING id, name, email, mobile_number, google_id, country_code, is_active, created_at, updated_at
         """
         return await self.fetch_one(query, *params, connection=connection)
 
@@ -149,7 +149,7 @@ class UserRepository(BaseRepository):
             UPDATE users
             SET country_code = $1, updated_at = CURRENT_TIMESTAMP
             WHERE id = $2
-            RETURNING id, name, email, mobile_number, google_id, role, country_code, is_active, created_at, updated_at
+            RETURNING id, name, email, mobile_number, google_id, country_code, is_active, created_at, updated_at
         """
         return await self.fetch_one(query, country_code, user_id, connection=connection)
 
