@@ -36,6 +36,8 @@ class Country(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, server_default=func.gen_random_uuid())
     name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     code: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
+    rate_from_usd: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4))
+    exchange_available: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")

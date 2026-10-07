@@ -1,5 +1,7 @@
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, Request, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db.database import get_db
 from app.core.dependencies import get_current_user, require_authenticated_user
 from app.schemas.auth import (
     GoogleLoginRequest,
@@ -152,7 +154,8 @@ async def get_me(
 )
 async def get_location(
     request: Request,
-    country_code: Optional[str] = None
+    country_code: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
 ) -> Dict[str, Any]:
     """
     Detect user's country from IP (defaults to US if not detected)
@@ -168,7 +171,7 @@ async def get_location(
     else:
         country_code = country_code.strip().upper()
 
-    currency = await country_service.get_exchange_rate_for_country(country_code)
+    currency = await country_service.get_exchange_rate_for_country(db, country_code)
     exchange_rate = currency["exchange_rate"] if currency else None
     exchange_available = currency["exchange_available"] if currency else False
 

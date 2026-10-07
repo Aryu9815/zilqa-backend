@@ -14,6 +14,35 @@ from app.utils.helpers import calculate_pagination
 
 class ProductService:
 
+    async def _enrich_with_categories(self, db: AsyncSession, records: List[Any]) -> List[Any]:
+        if not records:
+            return records
+            
+        all_category_ids = set()
+        for r in records:
+            for cid in (r.get("category_ids") or []):
+                all_category_ids.add(str(cid))
+                
+        category_map = {}
+        if all_category_ids:
+            from uuid import UUID
+            uuid_cids = []
+            for cid_str in all_category_ids:
+                try:
+                    uuid_cids.append(UUID(cid_str))
+                except ValueError:
+                    pass
+            if uuid_cids:
+                categories = await category_repository.get_by_ids(db, uuid_cids)
+                category_map = {str(c.id): c.name for c in categories}
+                
+        for r in records:
+            cids = r.get("category_ids") or []
+            cat_names = [category_map[str(cid)] for cid in cids if str(cid) in category_map]
+            r["category_names"] = cat_names
+            
+        return records
+
     async def list_products(
         self,
         db: AsyncSession,
@@ -46,6 +75,7 @@ class ProductService:
             is_active_only=is_active_only
         )
         enriched = await offer_service.enrich_product_records(db, records)
+        enriched = await self._enrich_with_categories(db, enriched)
         items = [ProductResponse.model_validate(r) for r in enriched]
         pagination = calculate_pagination(total=total, page=page, limit=limit)
         return PaginatedResponse(data=items, pagination=pagination)
@@ -55,7 +85,8 @@ class ProductService:
         if not record:
             raise NotFoundException(message="Product not found", error_code="PRODUCT_NOT_FOUND")
         enriched = await offer_service.enrich_single_product_record(db, record)
-        return ProductResponse.model_validate(enriched)
+        enriched_list = await self._enrich_with_categories(db, [enriched])
+        return ProductResponse.model_validate(enriched_list[0])
 
     async def get_related_products(self, db: AsyncSession, product_id: UUID) -> List[ProductResponse]:
         product = await product_repository.get_by_id(db, product_id, is_active_only=True, include_deleted=False)
@@ -67,6 +98,7 @@ class ProductService:
             records = await product_repository.get_by_ids(db, related_ids, is_active_only=True, include_deleted=False)
             if records:
                 enriched = await offer_service.enrich_product_records(db, records)
+                enriched = await self._enrich_with_categories(db, enriched)
                 return [ProductResponse.model_validate(r) for r in enriched]
 
         # Fallback: if there are no related products, use that product's first category products
@@ -83,6 +115,7 @@ class ProductService:
             )
             filtered = [r for r in cat_records if r["id"] != product_id]
             enriched = await offer_service.enrich_product_records(db, filtered)
+            enriched = await self._enrich_with_categories(db, enriched)
             return [ProductResponse.model_validate(r) for r in enriched]
 
         return []
@@ -115,7 +148,8 @@ class ProductService:
         full_record = await product_repository.get_by_id(db, record["id"], is_active_only=False, include_deleted=False)
         assert full_record is not None
         enriched = await offer_service.enrich_single_product_record(db, full_record)
-        return ProductResponse.model_validate(enriched)
+        enriched_list = await self._enrich_with_categories(db, [enriched])
+        return ProductResponse.model_validate(enriched_list[0])
 
     async def update_product(self, db: AsyncSession, product_id: UUID, product_in: ProductUpdate) -> ProductResponse:
         existing = await product_repository.get_by_id(db, product_id, is_active_only=False, include_deleted=False)
@@ -154,7 +188,8 @@ class ProductService:
         full_record = await product_repository.get_by_id(db, product_id, is_active_only=False, include_deleted=False)
         assert full_record is not None
         enriched = await offer_service.enrich_single_product_record(db, full_record)
-        return ProductResponse.model_validate(enriched)
+        enriched_list = await self._enrich_with_categories(db, [enriched])
+        return ProductResponse.model_validate(enriched_list[0])
 
 
     async def delete_product(self, db: AsyncSession, product_id: UUID) -> None:

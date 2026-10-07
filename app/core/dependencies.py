@@ -68,32 +68,39 @@ async def get_current_admin(
 ) -> Admin:
     """Dependency to extract, decode, and fetch the authenticated admin from admins table."""
     if not credentials or not credentials.credentials:
+        print('token required')
         raise UnauthorizedException(message="Authentication token is required", error_code="MISSING_TOKEN")
 
     token = credentials.credentials
     payload = decode_token(token)
     
     if payload.get("type") != "access":
+        print('invalid token type')
         raise UnauthorizedException(message="Invalid token type", error_code="INVALID_TOKEN_TYPE")
         
     if not payload.get("is_admin") and payload.get("role") != "admin":
+        print('admin required')
         raise ForbiddenException(message="Administrator privileges required", error_code="ADMIN_REQUIRED")
 
     admin_id_str = payload.get("sub")
     if not admin_id_str:
+        print('invalid token subject')
         raise UnauthorizedException(message="Invalid token subject", error_code="INVALID_TOKEN_SUBJECT")
 
     try:
         admin_uuid = uuid.UUID(admin_id_str)
     except ValueError:
+        print('invalid admin identifier in token')
         raise UnauthorizedException(message="Invalid admin identifier in token", error_code="INVALID_USER_ID")
 
     admin = await admin_repository.get_by_id(db, admin_uuid)
     
     if not admin:
+        print('admin not found')
         raise UnauthorizedException(message="Admin not found", error_code="ADMIN_NOT_FOUND")
 
     if not admin.is_active:
+        print('admin account is deactivated')
         raise ForbiddenException(message="Admin account is deactivated", error_code="ADMIN_INACTIVE")
 
     return admin

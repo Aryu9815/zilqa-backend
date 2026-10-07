@@ -72,6 +72,35 @@ async def get_related_products(product_id: UUID, db: AsyncSession = Depends(get_
 
 # ADMIN PRODUCT ENDPOINTS
 
+@admin_router.get(
+    "",
+    response_model=PaginatedResponse[ProductResponse],
+    summary="List all products including inactive (Admin only)"
+)
+async def list_products_admin(
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
+    category_id: Optional[UUID] = Query(None, description="Filter by single Category UUID"),
+    category_ids: Optional[List[UUID]] = Query(None, description="Filter by multiple Category UUIDs"),
+    min_price: Optional[Decimal] = Query(None, ge=0, description="Minimum price filter"),
+    max_price: Optional[Decimal] = Query(None, ge=0, description="Maximum price filter"),
+    search: Optional[str] = Query(None, description="Search term in product name/description"),
+    sort_by: Optional[ProductSortBy] = Query(ProductSortBy.NEWEST, description="Sort criteria"),
+    current_admin: Any = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+) -> PaginatedResponse[ProductResponse]:
+    return await product_service.list_products(db, 
+        page=page,
+        limit=limit,
+        category_id=category_id,
+        category_ids=category_ids,
+        min_price=min_price,
+        max_price=max_price,
+        search=search,
+        sort_by=sort_by,
+        is_active_only=False
+    )
+
 @admin_router.post(
     "",
     response_model=ResponseEnvelope[ProductResponse],

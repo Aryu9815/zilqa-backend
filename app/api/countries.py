@@ -1,8 +1,10 @@
 from typing import Any, Dict, Optional
 from uuid import UUID
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, Depends, Query, Request, status
 
 from app.core.dependencies import require_admin
+from app.db.database import get_db
 from app.schemas.common import PaginatedResponse, ResponseEnvelope
 from app.schemas.country import CountryCreate, CountryResponse, CountryUpdate, LocationResponse
 from app.services.country_service import country_service
@@ -22,7 +24,8 @@ admin_router = APIRouter(prefix="/admin/countries", tags=["Countries"])
 )
 async def get_location(
     request: Request,
-    country_code: Optional[str] = Query(None, description="Optional override for testing")
+    country_code: Optional[str] = Query(None, description="Optional override for testing"),
+    db: AsyncSession = Depends(get_db)
 ) -> Dict[str, Any]:
     """
     Detect user's country from IP (defaults to US if not detected)
@@ -37,7 +40,7 @@ async def get_location(
     else:
         country_code = country_code.strip().upper()
 
-    currency = await country_service.get_exchange_rate_for_country(country_code)
+    currency = await country_service.get_exchange_rate_for_country(db, country_code)
     exchange_rate = currency["exchange_rate"] if currency else None
     exchange_available = currency["exchange_available"] if currency else False
 
@@ -63,10 +66,12 @@ async def get_location(
 async def list_countries(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(50, ge=1, le=250, description="Items per page"),
-    search: Optional[str] = Query(None, description="Search by country name or code")
+    search: Optional[str] = Query(None, description="Search by country name or code"),
+    db: AsyncSession = Depends(get_db)
 ) -> PaginatedResponse[CountryResponse]:
     """Retrieve countries available for shipping and address checkout (active only)."""
     return await country_service.list_countries(
+        db,
         page=page,
         limit=limit,
         search=search,
@@ -80,9 +85,9 @@ async def list_countries(
     response_model=ResponseEnvelope[CountryResponse],
     summary="Get single country by ID (Public)"
 )
-async def get_country(country_id: UUID) -> ResponseEnvelope[CountryResponse]:
+async def get_country(country_id: UUID, db: AsyncSession = Depends(get_db)) -> ResponseEnvelope[CountryResponse]:
     """Retrieve details for a single active country."""
-    country = await country_service.get_country(country_id, is_active_only=True, include_deleted=False)
+    country = await country_service.get_country(db, country_id, is_active_only=True, include_deleted=False)
     return ResponseEnvelope(
         success=True,
         message="Country retrieved successfully",
@@ -104,10 +109,12 @@ async def admin_list_countries(
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     search: Optional[str] = Query(None, description="Search by country name or code"),
     is_active: Optional[bool] = Query(None, description="Filter by active status (None = all)"),
-    current_admin: Dict[str, Any] = Depends(require_admin)
+    current_admin: Dict[str, Any] = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
 ) -> PaginatedResponse[CountryResponse]:
     """Admin endpoint to list countries with full filtering."""
     return await country_service.list_countries(
+        db,
         page=page,
         limit=limit,
         search=search,
@@ -124,10 +131,11 @@ async def admin_list_countries(
 )
 async def create_country(
     country_in: CountryCreate,
-    current_admin: Dict[str, Any] = Depends(require_admin)
+    current_admin: Dict[str, Any] = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[CountryResponse]:
     """Create a new country with unique name and code."""
-    created = await country_service.create_country(country_in)
+    created = await country_service.create_country(db, country_in)
     return ResponseEnvelope(
         success=True,
         message="Country created successfully",
@@ -142,10 +150,11 @@ async def create_country(
 )
 async def admin_get_country(
     country_id: UUID,
-    current_admin: Dict[str, Any] = Depends(require_admin)
+    current_admin: Dict[str, Any] = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[CountryResponse]:
     """Admin endpoint to retrieve any non-deleted country by ID."""
-    country = await country_service.get_country(country_id, include_deleted=False)
+    country = await country_service.get_country(db, country_id, include_deleted=False)
     return ResponseEnvelope(
         success=True,
         message="Country retrieved successfully",
@@ -161,10 +170,11 @@ async def admin_get_country(
 async def update_country(
     country_id: UUID,
     country_in: CountryUpdate,
-    current_admin: Dict[str, Any] = Depends(require_admin)
+    current_admin: Dict[str, Any] = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[CountryResponse]:
     """Update country details such as name, code, or active status."""
-    updated = await country_service.update_country(country_id, country_in)
+    updated = await country_service.update_country(db, country_id, country_in)
     return ResponseEnvelope(
         success=True,
         message="Country updated successfully",
@@ -179,10 +189,11 @@ async def update_country(
 )
 async def delete_country(
     country_id: UUID,
-    current_admin: Dict[str, Any] = Depends(require_admin)
+    current_admin: Dict[str, Any] = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[None]:
     """Soft-delete a country by ID."""
-    await country_service.delete_country(country_id, soft=True)
+    await country_service.delete_country(db, country_id, soft=True)
     return ResponseEnvelope(
         success=True,
         message="Country deleted successfully"
