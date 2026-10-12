@@ -1,5 +1,7 @@
 from app.services.r2_service import upload_to_r2, delete_from_r2
-import json
+# import json
+# import os
+import urllib.parse
 from decimal import Decimal
 from typing import Any, List, Optional, Tuple
 from uuid import UUID
@@ -248,6 +250,7 @@ class ProductRepository:
         images_data: dict,
         files: List[UploadFile],
     ):
+        # print(images_data)
         result = await db.execute(
             select(Product).where(Product.id == product_id)
         )
@@ -289,9 +292,9 @@ class ProductRepository:
             )
 
         # Existing images
-        existing_urls = list(
-            product.other_image_urls or []
-        )
+        # existing_urls = list(
+        #     product.other_image_urls or []
+        # )
 
         # Map frontend fileKey -> UploadFile
         file_map = {
@@ -337,8 +340,9 @@ class ProductRepository:
                                 f"image slot {slot}."
                             ),
                         )
-
-                    new_urls.append(link)
+                    
+                    parsed_link = urllib.parse.urlparse(link).path
+                    new_urls.append(parsed_link)
 
                     continue
 
@@ -353,8 +357,8 @@ class ProductRepository:
                             f"image slot {slot}."
                         ),
                     )
-                print("file key:", file_key)
-                print("files:", file_map)
+                # print("file key:", file_key)
+                # print("files:", file_map)
                 file = file_map.get(file_key)
 
                 if not file:
@@ -382,19 +386,27 @@ class ProductRepository:
                         ),
                     )
 
-                # Fixed filename for every slot
+                content_type = file.content_type or "image/webp"
+                ext = "jpg" if content_type == "image/jpeg" else content_type.split("/")[-1]
+                # Dynamic filename for every slot
                 image_name = (
-                    f"{product.slug}-{slot:03d}.webp"
+                    f"{product.slug}-{slot:03d}.{ext}"
                 )
-
-                # Upload — this overwrites the existing R2 object if this slot already exists.
+                print('image_name:', image_name)
+                # Upload to local uploads folder (R2 code commented out)
+                # os.makedirs("uploads", exist_ok=True)
+                # file_path = os.path.join("uploads", image_name)
+                # with open(file_path, "wb") as buffer:
+                #     buffer.write(await file.read())
+                # image = {"path": f"/uploads/{image_name}"}
+                
                 image = await upload_to_r2(
                     file=file,
                     image_name=image_name,
                 )
 
                 uploaded_path = image["path"]
-
+                print('uploaded_path:', uploaded_path)
                 uploaded_files_on_r2.append(
                     uploaded_path
                 )
@@ -410,7 +422,7 @@ class ProductRepository:
                     status_code=400,
                     detail="Product must have between 3 and 5 images.",
                 )
-
+            print('new urls:',new_urls)
             # Update database
             product.other_image_urls = new_urls
 
@@ -425,7 +437,8 @@ class ProductRepository:
             await db.rollback()
             for r2_path in uploaded_files_on_r2:
                 try:
-                    delete_from_r2(r2_path)
+                    pass
+                    # delete_from_r2(r2_path)
                 except Exception:
                     pass
             raise        
