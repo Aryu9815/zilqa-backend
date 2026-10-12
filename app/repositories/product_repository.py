@@ -423,13 +423,13 @@ class ProductRepository:
 
                 print('image_name:', image_name)
                 # Upload to local uploads folder (R2 code commented out)
-                os.makedirs("uploads", exist_ok=True)
-                file_path = os.path.join("uploads", image_name)
-                with open(file_path, "wb") as buffer:
-                    buffer.write(await file.read())
-                local_image = {"path": f"/uploads/{image_name}"}
+                # os.makedirs("uploads", exist_ok=True)
+                # file_path = os.path.join("uploads", image_name)
+                # with open(file_path, "wb") as buffer:
+                #     buffer.write(await file.read())
+                # local_image = {"path": f"/uploads/{image_name}"}
                 
-                await file.seek(0)
+                # await file.seek(0)
                 image = await upload_to_r2(
                     file=file,
                     image_name=image_name,
