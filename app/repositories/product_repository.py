@@ -1,6 +1,7 @@
+from app.utils.helpers import resolve_media_urls
 from app.services.r2_service import upload_to_r2, delete_from_r2
-# import json
-# import os
+import json
+import os
 import urllib.parse
 from decimal import Decimal
 from typing import Any, List, Optional, Tuple
@@ -292,9 +293,9 @@ class ProductRepository:
             )
 
         # Existing images
-        # existing_urls = list(
-        #     product.other_image_urls or []
-        # )
+        existing_urls = list(
+            product.other_image_urls or []
+        )
 
         # Map frontend fileKey -> UploadFile
         file_map = {
@@ -388,18 +389,47 @@ class ProductRepository:
 
                 content_type = file.content_type or "image/webp"
                 ext = "jpg" if content_type == "image/jpeg" else content_type.split("/")[-1]
-                # Dynamic filename for every slot
-                image_name = (
-                    f"{product.slug}-{slot:03d}.{ext}"
+
+                # Determine version number for this slot (e.g. v2, v3, v4)
+                current_version = 0
+
+                # Check if an existing image in existing_urls belongs to this slot
+                slot_pattern = re.compile(
+                    rf"{re.escape(product.slug)}-{slot:03d}(?:-v(\d+))?\.[a-zA-Z0-9]+$",
+                    re.IGNORECASE,
                 )
+                for u in existing_urls:
+                    m = slot_pattern.search(u)
+                    if m:
+                        current_version = int(m.group(1)) if m.group(1) else 1
+                        break
+
+                # Fallback: check candidate from link or slot index
+                if current_version == 0:
+                    candidate = slot_data.get("link") or (
+                        existing_urls[slot - 1] if slot - 1 < len(existing_urls) else None
+                    )
+                    if candidate:
+                        cand_path = urllib.parse.urlparse(candidate).path
+                        m_v = re.search(r"-v(\d+)\.[a-zA-Z0-9]+$", cand_path, re.IGNORECASE)
+                        current_version = int(m_v.group(1)) if m_v else 1
+
+                # If replacing an existing image, increment version (v2, v3, v4, etc.)
+                if current_version > 0:
+                    next_version = current_version + 1
+                    image_name = f"{product.slug}-{slot:03d}-v{next_version}.{ext}"
+                else:
+                    image_name = f"{product.slug}-{slot:03d}.{ext}"
+
                 print('image_name:', image_name)
                 # Upload to local uploads folder (R2 code commented out)
-                # os.makedirs("uploads", exist_ok=True)
-                # file_path = os.path.join("uploads", image_name)
-                # with open(file_path, "wb") as buffer:
-                #     buffer.write(await file.read())
-                # image = {"path": f"/uploads/{image_name}"}
+                os.makedirs("uploads", exist_ok=True)
+                file_path = os.path.join("uploads", image_name)
+                with open(file_path, "wb") as buffer:
+                    buffer.write(await file.read())
+                local_image = {"path": f"/uploads/{image_name}"}
                 
+                await file.seek(0)
                 image = await upload_to_r2(
                     file=file,
                     image_name=image_name,
@@ -429,16 +459,36 @@ class ProductRepository:
             await db.commit()
             await db.refresh(product)
 
+            # Delete old image versions from R2 and local uploads that are no longer in new_urls
+            images_to_delete = [
+                u for u in existing_urls
+                if u and u not in new_urls
+            ]
+            for old_path in images_to_delete:
+                clean_key = urllib.parse.urlparse(old_path).path.lstrip("/")
+                try:
+                    delete_from_r2(clean_key)
+                except Exception as e:
+                    print(f"Failed to delete old image from R2: {clean_key}, error: {e}")
+
+                try:
+                    old_filename = os.path.basename(clean_key)
+                    old_local_path = os.path.join("uploads", old_filename)
+                    if os.path.exists(old_local_path):
+                        os.remove(old_local_path)
+                except Exception as e:
+                    print(f"Failed to delete old local file: {old_path}, error: {e}")
+
             return {
-                "images": product.other_image_urls
+                "images": resolve_media_urls(product.other_image_urls)
             }
 
         except Exception:
             await db.rollback()
             for r2_path in uploaded_files_on_r2:
                 try:
-                    pass
-                    # delete_from_r2(r2_path)
+                    # pass
+                    delete_from_r2(r2_path)
                 except Exception:
                     pass
             raise        
