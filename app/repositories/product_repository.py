@@ -129,6 +129,10 @@ class ProductRepository:
             f.model_dump() if hasattr(f, "model_dump") else dict(f)
             for f in (product_in.faqs or [])
         ]
+        materials = [
+            m.model_dump() if hasattr(m, "model_dump") else dict(m)
+            for m in (product_in.materials or [])
+        ]
         product = Product(
             name=product_in.name,
             # main_image_url=product_in.get('main_image_url', ''),
@@ -139,6 +143,7 @@ class ProductRepository:
             related_product_ids=[str(r) for r in (product_in.related_product_ids or [])],
             product_description=product_in.product_description,
             faqs=faqs,
+            materials=materials,
             is_active=product_in.is_active if product_in.is_active is not None else True,
             seo_title=product_in.seo_title,
             seo_description=product_in.seo_description,
@@ -196,6 +201,11 @@ class ProductRepository:
             product.faqs = [
                 f.model_dump() if hasattr(f, "model_dump") else dict(f)
                 for f in product_in.faqs
+            ]
+        if product_in.materials is not None:
+            product.materials = [
+                m.model_dump() if hasattr(m, "model_dump") else dict(m)
+                for m in product_in.materials
             ]
 
         await db.flush()

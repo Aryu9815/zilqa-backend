@@ -28,6 +28,7 @@ class Product(Base):
     product_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     related_product_ids: Mapped[List[UUID]] = mapped_column(ARRAY(PGUUID(as_uuid=True)),nullable=False,server_default="{}",)
     faqs: Mapped[List[Dict[str, Any]]] = mapped_column(JSONB, nullable=False, server_default="'[]'::jsonb")
+    materials: Mapped[List[Dict[str, Any]]] = mapped_column(JSONB, nullable=False, server_default="'[]'::jsonb")
     slug: Mapped[str] = mapped_column(String(255), nullable=False)
     seo_title: Mapped[str] = mapped_column(String(255), nullable=False)
     seo_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

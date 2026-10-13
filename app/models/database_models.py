@@ -52,6 +52,7 @@ class ProductModel:
     related_product_ids: List[UUID] = field(default_factory=list)
     product_description: Optional[str] = None
     faqs: List[Dict[str, Any]] = field(default_factory=list)
+    materials: List[Dict[str, Any]] = field(default_factory=list)
     is_active: bool = True
     is_deleted: bool = False
     created_at: Optional[datetime] = None

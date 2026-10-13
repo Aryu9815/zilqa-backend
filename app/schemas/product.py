@@ -30,6 +30,11 @@ class ProductFAQ(BaseModel):
     answer: str = Field(..., min_length=1, description="FAQ answer")
 
 
+class ProductMaterial(BaseModel):
+    title: str = Field(..., min_length=1, description="Material title")
+    note: str = Field(..., min_length=1, description="Material note/description")
+
+
 class ProductBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Product title")
     main_image_url: str = Field(..., description="Primary image URL")
@@ -40,6 +45,7 @@ class ProductBase(BaseModel):
     product_description: Optional[str] = Field(None, description="Detailed product description / story / specs")
     related_product_ids: List[UUID] = Field(default_factory=list, description="Associated related product UUIDs")
     faqs: List[ProductFAQ] = Field(default_factory=list, description="Product frequently asked questions")
+    materials: List[ProductMaterial] = Field(default_factory=list, description="Product materials specifications")
     is_active: bool = Field(True, description="Whether product is live on storefront")
     seo_title: str = Field(..., description="SEO title")
     seo_description: Optional[str] = Field(None, description="SEO description")
@@ -74,6 +80,18 @@ class ProductBase(BaseModel):
             return []
         return v
 
+    @field_validator("materials", mode="before")
+    @classmethod
+    def parse_materials(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except Exception:
+                return []
+        if v is None:
+            return []
+        return v
+
     @field_validator("related_product_ids", mode="before")
     @classmethod
     def parse_related_ids(cls, v: Any) -> Any:
@@ -98,6 +116,7 @@ class ProductCreate(BaseModel):
     product_description: Optional[str] = Field(None, description="Detailed product description / story / specs")
     related_product_ids: List[UUID] = Field(default_factory=list, description="Associated related product UUIDs")
     faqs: List[ProductFAQ] = Field(default_factory=list, description="Product frequently asked questions")
+    materials: List[ProductMaterial] = Field(default_factory=list, description="Product materials specifications")
     is_active: bool = Field(True, description="Whether product is live on storefront")
     seo_title: str = Field(..., description="SEO title")
     seo_description: Optional[str] = Field(None, description="SEO description")
@@ -109,6 +128,18 @@ class ProductCreate(BaseModel):
     @field_validator("faqs", mode="before")
     @classmethod
     def parse_faqs(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except Exception:
+                return []
+        if v is None:
+            return []
+        return v
+
+    @field_validator("materials", mode="before")
+    @classmethod
+    def parse_materials(cls, v: Any) -> Any:
         if isinstance(v, str):
             try:
                 return json.loads(v)
@@ -145,6 +176,7 @@ class ProductUpdate(BaseModel):
     product_description: Optional[str] = None
     related_product_ids: Optional[List[UUID]] = None
     faqs: Optional[List[ProductFAQ]] = None
+    materials: Optional[List[ProductMaterial]] = None
     is_active: Optional[bool] = None
     seo_title: Optional[str] = None
     seo_description: Optional[str] = None
@@ -170,6 +202,16 @@ class ProductUpdate(BaseModel):
     @field_validator("faqs", mode="before")
     @classmethod
     def parse_faqs(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except Exception:
+                return []
+        return v
+
+    @field_validator("materials", mode="before")
+    @classmethod
+    def parse_materials(cls, v: Any) -> Any:
         if isinstance(v, str):
             try:
                 return json.loads(v)
@@ -203,6 +245,7 @@ class ProductResponse(BaseModel):
     product_description: Optional[str] = None
     related_product_ids: List[UUID] = []
     faqs: List[ProductFAQ] = []
+    materials: List[ProductMaterial] = []
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -231,6 +274,18 @@ class ProductResponse(BaseModel):
     @field_validator("faqs", mode="before")
     @classmethod
     def parse_faqs(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except Exception:
+                return []
+        if v is None:
+            return []
+        return v
+
+    @field_validator("materials", mode="before")
+    @classmethod
+    def parse_materials(cls, v: Any) -> Any:
         if isinstance(v, str):
             try:
                 return json.loads(v)
