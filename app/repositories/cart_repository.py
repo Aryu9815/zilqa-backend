@@ -46,7 +46,7 @@ class CartRepository(BaseRepository):
         connection: Optional[asyncpg.Connection] = None
     ) -> List[asyncpg.Record]:
         query = """
-            SELECT ci.id, ci.cart_id, ci.product_id, ci.quantity,
+            SELECT ci.id, ci.cart_id, ci.product_id, ci.quantity, ci.size,
                    ci.offer_id, ci.unit_price, ci.discount_type, ci.discount_value,
                    ci.discount_amount, ci.final_unit_price, ci.total_price,
                    ci.is_active, ci.is_deleted, ci.created_at, ci.updated_at,
@@ -66,7 +66,7 @@ class CartRepository(BaseRepository):
         connection: Optional[asyncpg.Connection] = None
     ) -> Optional[asyncpg.Record]:
         query = """
-            SELECT id, cart_id, product_id, quantity,
+            SELECT id, cart_id, product_id, quantity, size,
                    offer_id, unit_price, discount_type, discount_value,
                    discount_amount, final_unit_price, total_price,
                    is_active, is_deleted, created_at, updated_at
@@ -75,27 +75,63 @@ class CartRepository(BaseRepository):
         """
         return await self.fetch_one(query, item_id, connection=connection)
 
+    async def get_item_by_cart_product_and_size(
+        self,
+        cart_id: UUID,
+        product_id: UUID,
+        size: Optional[str] = None,
+        connection: Optional[asyncpg.Connection] = None
+    ) -> Optional[asyncpg.Record]:
+        clean_size = size.strip() if size and size.strip() else None
+        if clean_size is None:
+            query = """
+                SELECT id, cart_id, product_id, quantity, size,
+                       offer_id, unit_price, discount_type, discount_value,
+                       discount_amount, final_unit_price, total_price,
+                       is_active, is_deleted, created_at, updated_at
+                FROM cart_items
+                WHERE cart_id = $1 
+                  AND product_id = $2 
+                  AND (size IS NULL OR TRIM(size) = '') 
+                  AND is_deleted = FALSE
+                LIMIT 1
+            """
+            return await self.fetch_one(query, cart_id, product_id, connection=connection)
+        else:
+            query = """
+                SELECT id, cart_id, product_id, quantity, size,
+                       offer_id, unit_price, discount_type, discount_value,
+                       discount_amount, final_unit_price, total_price,
+                       is_active, is_deleted, created_at, updated_at
+                FROM cart_items
+                WHERE cart_id = $1 
+                  AND product_id = $2 
+                  AND LOWER(TRIM(size)) = LOWER($3) 
+                  AND is_deleted = FALSE
+                LIMIT 1
+            """
+            return await self.fetch_one(query, cart_id, product_id, clean_size, connection=connection)
+
     async def get_item_by_cart_and_product(
         self,
         cart_id: UUID,
         product_id: UUID,
+        size: Optional[str] = None,
         connection: Optional[asyncpg.Connection] = None
     ) -> Optional[asyncpg.Record]:
-        query = """
-            SELECT id, cart_id, product_id, quantity,
-                   offer_id, unit_price, discount_type, discount_value,
-                   discount_amount, final_unit_price, total_price,
-                   is_active, is_deleted, created_at, updated_at
-            FROM cart_items
-            WHERE cart_id = $1 AND product_id = $2 AND is_deleted = FALSE
-        """
-        return await self.fetch_one(query, cart_id, product_id, connection=connection)
+        return await self.get_item_by_cart_product_and_size(
+            cart_id=cart_id,
+            product_id=product_id,
+            size=size,
+            connection=connection
+        )
 
     async def add_or_increment_item(
         self,
         cart_id: UUID,
         product_id: UUID,
         quantity: int,
+        size: Optional[str] = None,
         offer_id: Optional[UUID] = None,
         unit_price: Decimal = Decimal("0.00"),
         discount_type: Optional[str] = None,
@@ -105,15 +141,61 @@ class CartRepository(BaseRepository):
         total_price: Decimal = Decimal("0.00"),
         connection: Optional[asyncpg.Connection] = None
     ) -> asyncpg.Record:
+        clean_size = size.strip() if size and size.strip() else None
+
+        existing = await self.get_item_by_cart_product_and_size(
+            cart_id=cart_id,
+            product_id=product_id,
+            size=clean_size,
+            connection=connection
+        )
+        if existing:
+            new_qty = int(existing["quantity"]) + quantity
+            new_total = final_unit_price * new_qty
+            query = """
+                UPDATE cart_items
+                SET quantity = $2,
+                    offer_id = $3,
+                    unit_price = $4,
+                    discount_type = $5,
+                    discount_value = COALESCE($6, 0.00),
+                    discount_amount = COALESCE($7, 0.00),
+                    final_unit_price = $8,
+                    total_price = $9,
+                    is_deleted = FALSE,
+                    is_active = TRUE,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = $1
+                RETURNING id, cart_id, product_id, quantity, size,
+                          offer_id, unit_price, discount_type, discount_value,
+                          discount_amount, final_unit_price, total_price,
+                          is_active, is_deleted, created_at, updated_at
+            """
+            record = await self.fetch_one(
+                query,
+                existing["id"],
+                new_qty,
+                offer_id,
+                unit_price,
+                discount_type,
+                discount_value if discount_value is not None else Decimal("0.00"),
+                discount_amount,
+                final_unit_price,
+                new_total,
+                connection=connection
+            )
+            assert record is not None
+            return record
+
         query = """
             INSERT INTO cart_items (
-                cart_id, product_id, quantity,
+                cart_id, product_id, quantity, size,
                 offer_id, unit_price, discount_type, discount_value,
                 discount_amount, final_unit_price, total_price,
                 is_deleted, is_active, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 0.00), COALESCE($8, 0.00), $9, $10, FALSE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            ON CONFLICT (cart_id, product_id) DO UPDATE
+            VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 0.00), COALESCE($9, 0.00), $10, $11, FALSE, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT (cart_id, product_id, LOWER(COALESCE(TRIM(size), ''))) DO UPDATE
             SET quantity = cart_items.quantity + EXCLUDED.quantity,
                 offer_id = EXCLUDED.offer_id,
                 unit_price = EXCLUDED.unit_price,
@@ -125,7 +207,7 @@ class CartRepository(BaseRepository):
                 is_deleted = FALSE,
                 is_active = TRUE,
                 updated_at = CURRENT_TIMESTAMP
-            RETURNING id, cart_id, product_id, quantity,
+            RETURNING id, cart_id, product_id, quantity, size,
                       offer_id, unit_price, discount_type, discount_value,
                       discount_amount, final_unit_price, total_price,
                       is_active, is_deleted, created_at, updated_at
@@ -135,6 +217,7 @@ class CartRepository(BaseRepository):
             cart_id,
             product_id,
             quantity,
+            clean_size,
             offer_id,
             unit_price,
             discount_type,
@@ -151,31 +234,39 @@ class CartRepository(BaseRepository):
         self,
         item_id: UUID,
         quantity: int,
+        size: Optional[str] = None,
         total_price: Optional[Decimal] = None,
         connection: Optional[asyncpg.Connection] = None
     ) -> Optional[asyncpg.Record]:
+        clean_size = size.strip() if size and size.strip() else None
         if total_price is not None:
             query = """
                 UPDATE cart_items
-                SET quantity = $2, total_price = $3, updated_at = CURRENT_TIMESTAMP
+                SET quantity = $2,
+                    size = $3,
+                    total_price = $4,
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE id = $1 AND is_deleted = FALSE
-                RETURNING id, cart_id, product_id, quantity,
+                RETURNING id, cart_id, product_id, quantity, size,
                           offer_id, unit_price, discount_type, discount_value,
                           discount_amount, final_unit_price, total_price,
                           is_active, is_deleted, created_at, updated_at
             """
-            return await self.fetch_one(query, item_id, quantity, total_price, connection=connection)
+            return await self.fetch_one(query, item_id, quantity, clean_size, total_price, connection=connection)
         else:
             query = """
                 UPDATE cart_items
-                SET quantity = $2, total_price = final_unit_price * $2, updated_at = CURRENT_TIMESTAMP
+                SET quantity = $2,
+                    size = $3,
+                    total_price = final_unit_price * $2,
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE id = $1 AND is_deleted = FALSE
-                RETURNING id, cart_id, product_id, quantity,
+                RETURNING id, cart_id, product_id, quantity, size,
                           offer_id, unit_price, discount_type, discount_value,
                           discount_amount, final_unit_price, total_price,
                           is_active, is_deleted, created_at, updated_at
             """
-            return await self.fetch_one(query, item_id, quantity, connection=connection)
+            return await self.fetch_one(query, item_id, quantity, clean_size, connection=connection)
 
     async def update_item_offer_and_pricing(
         self,
@@ -200,7 +291,7 @@ class CartRepository(BaseRepository):
                 total_price = $8,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = $1 AND is_deleted = FALSE
-            RETURNING id, cart_id, product_id, quantity,
+            RETURNING id, cart_id, product_id, quantity, size,
                       offer_id, unit_price, discount_type, discount_value,
                       discount_amount, final_unit_price, total_price,
                       is_active, is_deleted, created_at, updated_at

@@ -68,6 +68,9 @@ CREATE TABLE IF NOT EXISTS products (
     related_product_ids UUID[] NOT NULL DEFAULT '{}',
     product_description TEXT,
     faqs JSONB NOT NULL DEFAULT '[]',
+    materials JSONB NOT NULL DEFAULT '[]',
+    variants JSONB NOT NULL DEFAULT '[]',
+    variant_name VARCHAR(255) NOT NULL,
     slug VARCHAR(255) NOT NULL,
     seo_title VARCHAR(255) NOT NULL,
     seo_description TEXT,
@@ -129,6 +132,7 @@ CREATE TABLE IF NOT EXISTS cart_items (
     cart_id UUID REFERENCES carts(id) ON DELETE CASCADE NOT NULL,
     product_id UUID REFERENCES products(id) ON DELETE CASCADE NOT NULL,
     quantity INTEGER DEFAULT 1 NOT NULL,
+    size VARCHAR(50),
     offer_id UUID REFERENCES offers(id) ON DELETE SET NULL,
     unit_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
     discount_type VARCHAR(20) CHECK (discount_type IN ('percentage', 'fixed')),
@@ -139,9 +143,9 @@ CREATE TABLE IF NOT EXISTS cart_items (
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT uq_cart_items_cart_product UNIQUE (cart_id, product_id)
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cart_items_cart_product_size ON cart_items (cart_id, product_id, LOWER(COALESCE(TRIM(size), '')));
 
 -- =============================================================================
 -- 8. WISHLIST ITEMS TABLE
@@ -296,6 +300,18 @@ CREATE TABLE IF NOT EXISTS admins (
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255),
     is_active BOOLEAN DEFAULT true NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE TABLE product_sizes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    category_id UUID REFERENCES categories(id),
+    name VARCHAR(50) NOT NULL,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );

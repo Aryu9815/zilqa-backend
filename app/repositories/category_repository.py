@@ -23,6 +23,19 @@ class CategoryRepository:
         stmt = select(Category).where(and_(*conditions))
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
+    
+    async def get_by_slug(
+        self,
+        db: AsyncSession,
+        category_slug: str,
+        include_deleted: bool = False,
+    ) -> Optional[Category]:
+        conditions = [Category.slug == category_slug]
+        if not include_deleted:
+            conditions.append(Category.is_deleted == False)
+        stmt = select(Category).where(and_(*conditions))
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def get_by_ids(
         self,

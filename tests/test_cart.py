@@ -331,4 +331,123 @@ async def test_order_pricing_calculated_in_user_currency(monkeypatch):
     assert pricing["subtotal"] == Decimal("8350.00")
 
 
+@pytest.mark.asyncio
+async def test_add_item_with_different_sizes_treated_as_different_cart_items(monkeypatch):
+    from unittest.mock import AsyncMock
+    from app.services.cart_service import cart_service
+    from app.repositories.product_repository import product_repository
+    from app.repositories.cart_repository import cart_repository
+    from app.repositories.offer_repository import offer_repository
+    from app.repositories.user_repository import user_repository
+    from app.repositories.country_repository import country_repository
+
+    mock_user_id = uuid4()
+    mock_prod_id = uuid4()
+    mock_cart_id = uuid4()
+
+    mock_product = {
+        "id": mock_prod_id,
+        "name": "Diamond Ring",
+        "price": Decimal("100.00"),
+        "main_image_url": "https://example.com/ring.jpg",
+        "is_active": True,
+        "is_deleted": False
+    }
+
+    mock_cart = {
+        "id": mock_cart_id,
+        "user_id": mock_user_id,
+        "coupon_code": None,
+        "coupon_discount_type": None,
+        "coupon_discount_value": None,
+        "coupon_discount_amount": Decimal("0.00"),
+        "subtotal": Decimal("200.00"),
+        "total_discount": Decimal("0.00"),
+        "shipping_amount": Decimal("0.00"),
+        "total_amount": Decimal("200.00"),
+    }
+
+    # Item 1: size "M", Item 2: size "L"
+    item_m_id = uuid4()
+    item_l_id = uuid4()
+    mock_cart_items = [
+        {
+            "id": item_m_id,
+            "cart_id": mock_cart_id,
+            "product_id": mock_prod_id,
+            "quantity": 1,
+            "size": "M",
+            "unit_price": Decimal("100.00"),
+            "discount_type": None,
+            "discount_value": None,
+            "discount_amount": Decimal("0.00"),
+            "final_unit_price": Decimal("100.00"),
+            "total_price": Decimal("100.00"),
+            "offer_id": None,
+            "is_active": True,
+            "is_deleted": False,
+            "product_name": "Diamond Ring",
+            "main_image_url": "https://example.com/ring.jpg",
+            "product_price": Decimal("100.00"),
+            "product_is_active": True,
+        },
+        {
+            "id": item_l_id,
+            "cart_id": mock_cart_id,
+            "product_id": mock_prod_id,
+            "quantity": 1,
+            "size": "L",
+            "unit_price": Decimal("100.00"),
+            "discount_type": None,
+            "discount_value": None,
+            "discount_amount": Decimal("0.00"),
+            "final_unit_price": Decimal("100.00"),
+            "total_price": Decimal("100.00"),
+            "offer_id": None,
+            "is_active": True,
+            "is_deleted": False,
+            "product_name": "Diamond Ring",
+            "main_image_url": "https://example.com/ring.jpg",
+            "product_price": Decimal("100.00"),
+            "product_is_active": True,
+        }
+    ]
+
+    add_calls = []
+    async def mock_add_or_increment(**kwargs):
+        add_calls.append(kwargs)
+        return {"id": uuid4()}
+
+    monkeypatch.setattr(product_repository, "get_by_id", AsyncMock(return_value=mock_product))
+    monkeypatch.setattr(offer_repository, "get_active_offers", AsyncMock(return_value=[]))
+    monkeypatch.setattr(cart_repository, "get_or_create_cart", AsyncMock(return_value=mock_cart))
+    monkeypatch.setattr(cart_repository, "get_cart_by_user", AsyncMock(return_value=mock_cart))
+    monkeypatch.setattr(cart_repository, "get_cart_items_with_products", AsyncMock(return_value=mock_cart_items))
+    monkeypatch.setattr(cart_repository, "add_or_increment_item", mock_add_or_increment)
+    monkeypatch.setattr(cart_repository, "update_cart_totals_and_coupon", AsyncMock(return_value=mock_cart))
+    monkeypatch.setattr(cart_repository, "update_item_offer_and_pricing", AsyncMock())
+    monkeypatch.setattr(user_repository, "get_by_id", AsyncMock(return_value={"id": mock_user_id, "country_code": "US"}))
+    monkeypatch.setattr(country_repository, "get_by_code", AsyncMock(return_value=None))
+
+    mock_db = AsyncMock()
+
+    # 1. Add with size "M"
+    await cart_service.add_item_to_cart(db=mock_db, user_id=mock_user_id, product_id=mock_prod_id, quantity=1, size="M")
+    assert len(add_calls) == 1
+    assert add_calls[0]["size"] == "M"
+
+    # 2. Add same product with size "L"
+    await cart_service.add_item_to_cart(db=mock_db, user_id=mock_user_id, product_id=mock_prod_id, quantity=1, size="L")
+    assert len(add_calls) == 2
+    assert add_calls[1]["size"] == "L"
+
+    # Both items exist in cart with their distinct sizes and IDs
+    cart = await cart_service.get_user_cart(mock_user_id)
+    assert len(cart.items) == 2
+    assert cart.items[0].size == "M"
+    assert cart.items[1].size == "L"
+    assert cart.items[0].id != cart.items[1].id
+
+
+
 

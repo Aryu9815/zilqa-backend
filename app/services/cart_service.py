@@ -178,6 +178,7 @@ class CartService:
                     id=r["id"],
                     product=product_snapshot,
                     quantity=qty,
+                    size=r.get("size") if isinstance(r, dict) or hasattr(r, "get") else getattr(r, "size", None),
                     subtotal=item_total,
                     offer_id=r["offer_id"],
                     unit_price=unit_price,
@@ -225,7 +226,7 @@ class CartService:
             coupon_code=cart_record.get("coupon_code"),
             coupon_discount_type=cart_record.get("coupon_discount_type"),
             coupon_discount_value=Decimal(str(cart_record["coupon_discount_value"])) if cart_record.get("coupon_discount_value") is not None else None,
-            coupon_discount_amount=Decimal(str(cart_record["coupon_discount_amount"] or "0.00")),
+            coupon_discount_amount=Decimal(str(cart_record.get("coupon_discount_amount") or "0.00")),
             subtotal=subtotal,
             total_discount=total_discount,
             shipping_amount=shipping_amount,
@@ -236,7 +237,14 @@ class CartService:
             country_code=user_country_code,
         )
 
-    async def add_item_to_cart(self, db: AsyncSession, user_id: UUID, product_id: UUID, quantity: int) -> CartResponse:
+    async def add_item_to_cart(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        product_id: UUID,
+        quantity: int,
+        size: Optional[str] = None
+    ) -> CartResponse:
         product = await product_repository.get_by_id(db, product_id)
         if not product:
             raise NotFoundException(message="Product not found", error_code="PRODUCT_NOT_FOUND")
@@ -266,11 +274,12 @@ class CartService:
         cart_record = await cart_repository.get_or_create_cart(user_id)
         cart_id = cart_record["id"]
 
-        # Insert or update cart item with active offer details
+        # Insert or update cart item with active offer details and size
         await cart_repository.add_or_increment_item(
             cart_id=cart_id,
             product_id=product_id,
             quantity=quantity,
+            size=size.strip() if size else None,
             offer_id=offer_id,
             unit_price=orig_price,
             discount_type=disc_type,
@@ -284,7 +293,14 @@ class CartService:
         await self._refresh_and_persist_cart_state(cart_id, user_id)
         return await self.get_user_cart(user_id)
 
-    async def update_cart_item(self, db: AsyncSession, user_id: UUID, item_id: UUID, quantity: int) -> CartResponse:
+    async def update_cart_item(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        item_id: UUID,
+        quantity: int,
+        size: Optional[str] = None
+    ) -> CartResponse:
         cart_record = await cart_repository.get_cart_by_user(user_id)
         if not cart_record:
             raise NotFoundException(message="Cart not found", error_code="CART_NOT_FOUND")
@@ -315,18 +331,52 @@ class CartService:
         disc_val = Decimal(str(offer_data.discount_value)) if offer_data else None
         item_total = round_money(final_unit_p * quantity)
 
-        # Update quantity and refreshed offer pricing
-        await cart_repository.update_item_offer_and_pricing(
-            item_id=item_id,
-            offer_id=offer_id,
-            unit_price=orig_price,
-            discount_type=disc_type,
-            discount_value=disc_val,
-            discount_amount=disc_unit,
-            final_unit_price=final_unit_p,
-            total_price=item_total
+        target_size = size.strip() if size and size.strip() else (None if size == "" else item["size"])
+        other_item = await cart_repository.get_item_by_cart_product_and_size(
+            cart_id=cart_id,
+            product_id=item["product_id"],
+            size=target_size
         )
-        await cart_repository.update_item_quantity(item_id, quantity, total_price=item_total)
+
+        if other_item and other_item["id"] != item_id:
+            # Merge with existing cart item of the same target size
+            merged_qty = int(other_item["quantity"]) + quantity
+            merged_total = round_money(final_unit_p * merged_qty)
+            await cart_repository.delete_item(item_id, cart_id)
+            await cart_repository.update_item_offer_and_pricing(
+                item_id=other_item["id"],
+                offer_id=offer_id,
+                unit_price=orig_price,
+                discount_type=disc_type,
+                discount_value=disc_val,
+                discount_amount=disc_unit,
+                final_unit_price=final_unit_p,
+                total_price=merged_total
+            )
+            await cart_repository.update_item_quantity(
+                other_item["id"],
+                merged_qty,
+                size=target_size,
+                total_price=merged_total
+            )
+        else:
+            # Update quantity and refreshed offer pricing
+            await cart_repository.update_item_offer_and_pricing(
+                item_id=item_id,
+                offer_id=offer_id,
+                unit_price=orig_price,
+                discount_type=disc_type,
+                discount_value=disc_val,
+                discount_amount=disc_unit,
+                final_unit_price=final_unit_p,
+                total_price=item_total
+            )
+            await cart_repository.update_item_quantity(
+                item_id,
+                quantity,
+                size=target_size,
+                total_price=item_total
+            )
 
         await self._refresh_and_persist_cart_state(cart_id, user_id)
         return await self.get_user_cart(user_id)
@@ -483,6 +533,7 @@ class CartService:
                             product_name=prod_name,
                             product_image_url=prod_img,
                             quantity=qty,
+                            size=it.size,
                             original_unit_price=orig_price,
                             product_discount_unit=disc_unit,
                             final_unit_price=final_unit_p,
@@ -542,6 +593,7 @@ class CartService:
                         product_name=r["product_name"],
                         product_image_url=r["main_image_url"],
                         quantity=qty,
+                        size=r.get("size") if isinstance(r, dict) or hasattr(r, "get") else getattr(r, "size", None),
                         original_unit_price=unit_price,
                         product_discount_unit=disc_unit,
                         final_unit_price=final_unit_p,

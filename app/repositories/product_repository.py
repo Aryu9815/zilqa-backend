@@ -10,6 +10,7 @@ from sqlalchemy import select, update, and_, func, cast, String, text
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.types import UUID as SQLA_UUID
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.models.product import Product
 from app.models.category import Category
@@ -27,6 +28,23 @@ class ProductRepository:
         include_deleted: bool = False,
     ) -> Optional[Product]:
         conditions = [Product.id == product_id]
+        if not include_deleted:
+            conditions.append(Product.is_deleted == False)
+        if is_active_only:
+            conditions.append(Product.is_active == True)
+
+        stmt = select(Product).where(and_(*conditions))
+        result = await db.execute(stmt)
+        return result.scalars().first()
+    
+    async def get_by_slug(
+        self,
+        db: AsyncSession,
+        product_slug: str,
+        is_active_only: bool = True,
+        include_deleted: bool = False,
+    ) -> Optional[Product]:
+        conditions = [Product.slug == product_slug]
         if not include_deleted:
             conditions.append(Product.is_deleted == False)
         if is_active_only:
@@ -133,14 +151,17 @@ class ProductRepository:
             m.model_dump() if hasattr(m, "model_dump") else dict(m)
             for m in (product_in.materials or [])
         ]
+        variants = [str(v) for v in (product_in.variants or [])]
         product = Product(
             name=product_in.name,
+            variant_name=product_in.variant_name,
             # main_image_url=product_in.get('main_image_url', ''),
             other_image_urls=[],
             price=product_in.price,
             category_ids=[str(c) for c in (product_in.category_ids or [])],
             description=product_in.description,
             related_product_ids=[str(r) for r in (product_in.related_product_ids or [])],
+            variants=variants,
             product_description=product_in.product_description,
             faqs=faqs,
             materials=materials,
@@ -169,6 +190,11 @@ class ProductRepository:
 
         if product_in.name is not None:
             product.name = product_in.name
+        if product_in.variant_name is not None:
+            product.variant_name = product_in.variant_name
+        if product_in.variants is not None:
+            product.variants = [str(v) for v in product_in.variants]
+            flag_modified(product, "variants")
         if product_in.main_image_url is not None:
             product.main_image_url = product_in.main_image_url
         if product_in.other_image_urls is not None:
@@ -211,6 +237,49 @@ class ProductRepository:
         await db.flush()
         await db.refresh(product)
         return product
+
+    async def add_variant_to_product(self, db: AsyncSession, product_id: UUID, variant_id_to_add: UUID) -> None:
+        product = await self.get_by_id(db, product_id, is_active_only=False, include_deleted=False)
+        if not product:
+            return
+        current_vars = [str(v) for v in (product.variants or [])]
+        vid_str = str(variant_id_to_add)
+        if vid_str not in current_vars:
+            current_vars.append(vid_str)
+            product.variants = current_vars
+            flag_modified(product, "variants")
+            await db.flush()
+
+    async def remove_variant_from_product(self, db: AsyncSession, product_id: UUID, variant_id_to_remove: UUID) -> None:
+        product = await self.get_by_id(db, product_id, is_active_only=False, include_deleted=False)
+        if not product:
+            return
+        current_vars = [str(v) for v in (product.variants or [])]
+        vid_str = str(variant_id_to_remove)
+        if vid_str in current_vars:
+            product.variants = [v for v in current_vars if v != vid_str]
+            flag_modified(product, "variants")
+            await db.flush()
+
+    async def remove_variant_from_all_products(self, db: AsyncSession, variant_id_to_remove: UUID) -> None:
+        vid_str = str(variant_id_to_remove)
+        stmt = select(Product).where(
+            and_(
+                Product.id != variant_id_to_remove,
+                Product.is_deleted == False
+            )
+        )
+        result = await db.execute(stmt)
+        products = result.scalars().all()
+        changed = False
+        for prod in products:
+            current_vars = [str(v) for v in (prod.variants or [])]
+            if vid_str in current_vars:
+                prod.variants = [v for v in current_vars if v != vid_str]
+                flag_modified(prod, "variants")
+                changed = True
+        if changed:
+            await db.flush()
 
     async def delete(self, db: AsyncSession, product_id: UUID, soft: bool = True) -> bool:
         product = await db.get(Product, product_id)

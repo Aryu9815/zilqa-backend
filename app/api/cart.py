@@ -69,7 +69,8 @@ async def add_item_to_cart(
         db=db,
         user_id=current_user["id"],
         product_id=item_in.product_id,
-        quantity=item_in.quantity
+        quantity=item_in.quantity,
+        size=item_in.size,
     )
     return ResponseEnvelope(
         success=True,
@@ -93,7 +94,8 @@ async def update_cart_item(
         db=db,
         user_id=current_user["id"],
         item_id=item_id,
-        quantity=item_in.quantity
+        quantity=item_in.quantity,
+        size=item_in.size,
     )
     return ResponseEnvelope(
         success=True,

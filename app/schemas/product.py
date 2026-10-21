@@ -35,8 +35,26 @@ class ProductMaterial(BaseModel):
     note: str = Field(..., min_length=1, description="Material note/description")
 
 
+class ProductVariantBrief(BaseModel):
+    id: UUID
+    name: str
+    variant_name: str = ""
+    price: Decimal
+    main_image_url: Optional[str] = None
+    slug: str
+    is_active: bool = True
+
+    @field_validator("main_image_url", mode="before")
+    @classmethod
+    def format_main_image_url(cls, v: Any) -> Any:
+        return resolve_media_url(v)
+
+    model_config = {"from_attributes": True}
+
+
 class ProductBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Product title")
+    variant_name: str = Field(..., min_length=1, max_length=255, description="Variant name for this product (compulsory)")
     main_image_url: str = Field(..., description="Primary image URL")
     other_image_urls: List[str] = Field(default_factory=list, max_length=10, description="Additional image URLs")
     price: Decimal = Field(..., ge=0, decimal_places=2, description="Product price in INR/USD")
@@ -44,6 +62,7 @@ class ProductBase(BaseModel):
     description: Optional[str] = Field(None, description="Short product description")
     product_description: Optional[str] = Field(None, description="Detailed product description / story / specs")
     related_product_ids: List[UUID] = Field(default_factory=list, description="Associated related product UUIDs")
+    variants: List[UUID] = Field(default_factory=list, description="Associated variant product UUIDs")
     faqs: List[ProductFAQ] = Field(default_factory=list, description="Product frequently asked questions")
     materials: List[ProductMaterial] = Field(default_factory=list, description="Product materials specifications")
     is_active: bool = Field(True, description="Whether product is live on storefront")
@@ -99,6 +118,20 @@ class ProductBase(BaseModel):
             return []
         return v
 
+    @field_validator("variants", mode="before")
+    @classmethod
+    def parse_variants(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                v = json.loads(v)
+            except Exception:
+                return []
+        if isinstance(v, dict):
+            return list(v.values()) if v else []
+        if v is None:
+            return []
+        return v
+
     @model_validator(mode="before")
     @classmethod
     def handle_legacy_category_id(cls, values: Any) -> Any:
@@ -110,11 +143,13 @@ class ProductBase(BaseModel):
 
 class ProductCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Product title")
+    variant_name: str = Field(..., min_length=1, max_length=255, description="Variant name for the product (compulsory)")
     price: Decimal = Field(..., ge=0, decimal_places=2, description="Product price in INR/USD")
     category_ids: List[UUID] = Field(default_factory=list, description="Associated Category UUIDs")
     description: Optional[str] = Field(None, description="Short product description")
     product_description: Optional[str] = Field(None, description="Detailed product description / story / specs")
     related_product_ids: List[UUID] = Field(default_factory=list, description="Associated related product UUIDs")
+    variants: List[UUID] = Field(default_factory=list, description="Associated variant product UUIDs")
     faqs: List[ProductFAQ] = Field(default_factory=list, description="Product frequently asked questions")
     materials: List[ProductMaterial] = Field(default_factory=list, description="Product materials specifications")
     is_active: bool = Field(True, description="Whether product is live on storefront")
@@ -156,6 +191,20 @@ class ProductCreate(BaseModel):
             return []
         return v
 
+    @field_validator("variants", mode="before")
+    @classmethod
+    def parse_variants(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                v = json.loads(v)
+            except Exception:
+                return []
+        if isinstance(v, dict):
+            return list(v.values()) if v else []
+        if v is None:
+            return []
+        return v
+
     @model_validator(mode="before")
     @classmethod
     def handle_legacy_category_id(cls, values: Any) -> Any:
@@ -168,6 +217,7 @@ class ProductCreate(BaseModel):
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
+    variant_name: Optional[str] = Field(None, min_length=1, max_length=255)
     main_image_url: Optional[str] = None
     other_image_urls: Optional[List[str]] = Field(None, max_length=10)
     price: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
@@ -175,6 +225,7 @@ class ProductUpdate(BaseModel):
     description: Optional[str] = None
     product_description: Optional[str] = None
     related_product_ids: Optional[List[UUID]] = None
+    variants: Optional[List[UUID]] = None
     faqs: Optional[List[ProductFAQ]] = None
     materials: Optional[List[ProductMaterial]] = None
     is_active: Optional[bool] = None
@@ -224,6 +275,20 @@ class ProductUpdate(BaseModel):
     def parse_related_ids(cls, v: Any) -> Any:
         return v
 
+    @field_validator("variants", mode="before")
+    @classmethod
+    def parse_variants(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                v = json.loads(v)
+            except Exception:
+                return []
+        if isinstance(v, dict):
+            return list(v.values()) if v else []
+        if v is None:
+            return None
+        return v
+
     @model_validator(mode="before")
     @classmethod
     def handle_legacy_category_id(cls, values: Any) -> Any:
@@ -236,6 +301,7 @@ class ProductUpdate(BaseModel):
 class ProductResponse(BaseModel):
     id: UUID
     name: str
+    variant_name: str = ""
     main_image_url: Optional[str]
     other_image_urls: List[str] = []
     price: Decimal
@@ -244,6 +310,8 @@ class ProductResponse(BaseModel):
     description: Optional[str] = None
     product_description: Optional[str] = None
     related_product_ids: List[UUID] = []
+    variants: List[UUID] = []
+    variant_products: List[ProductVariantBrief] = []
     faqs: List[ProductFAQ] = []
     materials: List[ProductMaterial] = []
     is_active: bool
@@ -256,12 +324,12 @@ class ProductResponse(BaseModel):
     discounted_price: Optional[Decimal] = None
     final_price: Optional[Decimal] = None
 
-    seo_title: str
-    seo_description: Optional[str]
-    slug: str
-    og_image: Optional[str]
-    og_title: Optional[str]
-    og_description: Optional[str]
+    seo_title: str = ""
+    seo_description: Optional[str] = None
+    slug: str = ""
+    og_image: Optional[str] = None
+    og_title: Optional[str] = None
+    og_description: Optional[str] = None
 
     @model_validator(mode="after")
     def populate_discounted_prices(self) -> "ProductResponse":
@@ -310,6 +378,20 @@ class ProductResponse(BaseModel):
     @field_validator("related_product_ids", mode="before")
     @classmethod
     def parse_related_ids(cls, v: Any) -> Any:
+        if v is None:
+            return []
+        return v
+
+    @field_validator("variants", mode="before")
+    @classmethod
+    def parse_variants(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                v = json.loads(v)
+            except Exception:
+                return []
+        if isinstance(v, dict):
+            return list(v.values()) if v else []
         if v is None:
             return []
         return v

@@ -55,6 +55,19 @@ async def get_product(product_id: UUID, db: AsyncSession = Depends(get_db)) -> R
         data=product
     )
 
+@public_router.get(
+    "/slug/{product_slug}",
+    response_model=ResponseEnvelope[ProductResponse],
+    summary="Get single product details (Public)"
+)
+async def get_product_by_slug(product_slug: str, db: AsyncSession = Depends(get_db)) -> ResponseEnvelope[ProductResponse]:
+    product = await product_service.get_product_by_slug(db, product_slug, is_active_only=True)
+    return ResponseEnvelope(
+        success=True,
+        message="Product retrieved successfully",
+        data=product
+    )
+
 
 @public_router.get(
     "/{product_id}/related",
@@ -67,6 +80,20 @@ async def get_related_products(product_id: UUID, db: AsyncSession = Depends(get_
         success=True,
         message="Related products retrieved successfully",
         data=related_products
+    )
+
+
+@public_router.get(
+    "/{product_id}/variants",
+    response_model=ResponseEnvelope[List[ProductResponse]],
+    summary="Get variants of a product (Public)"
+)
+async def get_product_variants(product_id: UUID, db: AsyncSession = Depends(get_db)) -> ResponseEnvelope[List[ProductResponse]]:
+    variants = await product_service.get_product_variants(db, product_id, is_active_only=True)
+    return ResponseEnvelope(
+        success=True,
+        message="Product variants retrieved successfully",
+        data=variants
     )
 
 
@@ -100,6 +127,25 @@ async def list_products_admin(
         sort_by=sort_by,
         is_active_only=False
     )
+
+
+@admin_router.get(
+    "/{product_id}/variants",
+    response_model=ResponseEnvelope[List[ProductResponse]],
+    summary="Get variants of a product including inactive (Admin only)"
+)
+async def get_product_variants_admin(
+    product_id: UUID,
+    current_admin: Any = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+) -> ResponseEnvelope[List[ProductResponse]]:
+    variants = await product_service.get_product_variants(db, product_id, is_active_only=False)
+    return ResponseEnvelope(
+        success=True,
+        message="Product variants retrieved successfully",
+        data=variants
+    )
+
 
 @admin_router.post(
     "",

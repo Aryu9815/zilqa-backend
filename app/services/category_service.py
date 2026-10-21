@@ -28,6 +28,12 @@ class CategoryService:
         if not record:
             raise NotFoundException(message="Category not found", error_code="CATEGORY_NOT_FOUND")
         return CategoryResponse.model_validate(record)
+    
+    async def get_category_by_slug(self, db: AsyncSession, category_slug: str) -> CategoryResponse:
+        record = await category_repository.get_by_slug(db, category_slug)
+        if not record:
+            raise NotFoundException(message="Category not found", error_code="CATEGORY_NOT_FOUND")
+        return CategoryResponse.model_validate(record)
 
     async def create_category(self, db: AsyncSession, category_in: CategoryCreate) -> CategoryResponse:
         existing = await category_repository.get_by_name(db, category_in.name, include_deleted=True)

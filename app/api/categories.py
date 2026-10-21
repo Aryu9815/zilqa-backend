@@ -44,6 +44,19 @@ async def get_category(category_id: UUID, db: AsyncSession = Depends(get_db)) ->
         data=category
     )
 
+@public_router.get(
+    "/slug/{category_slug}",
+    response_model=ResponseEnvelope[CategoryResponse],
+    summary="Get single category by slug (Public)"
+)
+async def get_category_by_slug(category_slug: str, db: AsyncSession = Depends(get_db)) -> ResponseEnvelope[CategoryResponse]:
+    category = await category_service.get_category_by_slug(db, category_slug)
+    return ResponseEnvelope(
+        success=True,
+        message="Category retrieved successfully",
+        data=category
+    )
+
 
 # =============================================================================
 # ADMIN CATEGORY ENDPOINTS

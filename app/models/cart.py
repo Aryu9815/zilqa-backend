@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional, List
 from uuid import UUID
-from sqlalchemy import String, Boolean, DateTime, Numeric, ForeignKey, Integer, func, CheckConstraint
+from sqlalchemy import String, Boolean, DateTime, Numeric, ForeignKey, Integer, func, CheckConstraint, Index, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
@@ -34,11 +34,15 @@ class Cart(Base):
 
 class CartItem(Base):
     __tablename__ = "cart_items"
+    __table_args__ = (
+        Index("uq_cart_items_cart_product_size", "cart_id", "product_id", text("LOWER(COALESCE(TRIM(size), ''))"), unique=True),
+    )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, server_default=func.gen_random_uuid())
     cart_id: Mapped[UUID] = mapped_column(ForeignKey("carts.id", ondelete="CASCADE"), nullable=False)
     product_id: Mapped[UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    size: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     offer_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("offers.id", ondelete="SET NULL"))
 
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, server_default="0")

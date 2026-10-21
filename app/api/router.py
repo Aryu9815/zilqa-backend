@@ -11,6 +11,7 @@ from app.api import (
     offers,
     orders,
     products,
+    product_sizes,
     reviews,
     users,
     wishlist,
@@ -39,6 +40,10 @@ api_router.include_router(categories.admin_router)
 # Products (Public & Admin)
 api_router.include_router(products.public_router)
 api_router.include_router(products.admin_router)
+
+# Product Sizes (Public & Admin)
+api_router.include_router(product_sizes.public_router)
+api_router.include_router(product_sizes.admin_router)
 
 # Offers & Discounts (Public & Admin)
 api_router.include_router(offers.public_router)

@@ -21,9 +21,23 @@ async def init_db_pool() -> asyncpg.Pool:
             max_size=settings.DB_POOL_MAX_SIZE,
             max_inactive_connection_lifetime=settings.DB_POOL_MAX_INACTIVE_CONNECTION_LIFETIME,
             timeout=settings.DB_POOL_TIMEOUT,
-            ssl="require",
+            # ssl="require",
         )
         logger.info("asyncpg connection pool initialized successfully.")
+        try:
+            async with _pool.acquire() as conn:
+                await conn.execute("""
+                    ALTER TABLE cart_items DROP CONSTRAINT IF EXISTS uq_cart_items_cart_product;
+                    DROP INDEX IF EXISTS uq_cart_items_cart_product;
+                    DROP INDEX IF EXISTS uq_cart_items_cart_product_size;
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_cart_items_cart_product_size 
+                    ON cart_items (cart_id, product_id, LOWER(COALESCE(TRIM(size), '')));
+
+                    ALTER TABLE products ADD COLUMN IF NOT EXISTS variants JSONB NOT NULL DEFAULT '[]'::jsonb;
+                    ALTER TABLE products ADD COLUMN IF NOT EXISTS variant_name VARCHAR(255) NOT NULL DEFAULT '';
+                """)
+        except Exception as e:
+            logger.warning("Could not execute schema migrations in init_db_pool: %s", e)
     return _pool
 
 

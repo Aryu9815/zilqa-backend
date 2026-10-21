@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -107,11 +107,28 @@ class CountryService:
         if not deleted:
             raise NotFoundException(message="Country not found", error_code="COUNTRY_NOT_FOUND")
 
-    async def get_exchange_rate_for_country(self, db: AsyncSession, country_code: str) -> Optional[dict]:
+    async def get_exchange_rate_for_country(self, arg1: Any, arg2: Optional[str] = None) -> Optional[dict]:
         """
         Fetch exchange rate for a given country code if exchange is available.
-        Returns a dictionary with exchange_rate or None.
+        Supports both (db, country_code) and (country_code).
         """
+        if isinstance(arg1, str):
+            country_code = arg1
+            db = None
+        else:
+            db = arg1
+            country_code = arg2
+
+        if not country_code:
+            return None
+
+        if db is None:
+            from app.db.database import AsyncSessionLocal
+            async with AsyncSessionLocal() as session:
+                return await self._get_exchange_rate_with_db(session, country_code)
+        return await self._get_exchange_rate_with_db(db, country_code)
+
+    async def _get_exchange_rate_with_db(self, db: AsyncSession, country_code: str) -> Optional[dict]:
         country = await country_repository.get_by_code(db, country_code)
         if not country:
             return None

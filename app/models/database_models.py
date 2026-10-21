@@ -53,6 +53,8 @@ class ProductModel:
     product_description: Optional[str] = None
     faqs: List[Dict[str, Any]] = field(default_factory=list)
     materials: List[Dict[str, Any]] = field(default_factory=list)
+    variants: List[UUID] = field(default_factory=list)
+    variant_name: str = ""
     is_active: bool = True
     is_deleted: bool = False
     created_at: Optional[datetime] = None
@@ -100,6 +102,7 @@ class CartItemModel:
     cart_id: UUID
     product_id: UUID
     quantity: int = 1
+    size: Optional[str] = None
     offer_id: Optional[UUID] = None
     unit_price: Decimal = Decimal("0.00")
     discount_type: Optional[str] = None
@@ -218,5 +221,17 @@ class OfferModel:
 class OfferProductModel:
     offer_id: UUID
     product_id: UUID
+
+
+@dataclass
+class ProductSizeModel:
+    id: UUID
+    name: str
+    category_id: Optional[UUID] = None
+    display_order: int = 0
+    is_active: bool = True
+    is_deleted: bool = False
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 

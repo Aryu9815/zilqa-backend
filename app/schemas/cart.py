@@ -10,10 +10,12 @@ from app.utils.helpers import resolve_media_url
 class CartItemCreate(BaseModel):
     product_id: UUID = Field(..., description="UUID of product to add")
     quantity: int = Field(1, ge=1, description="Quantity to add (must be at least 1)")
+    size: Optional[str] = Field(None, max_length=50, description="Selected size (optional)")
 
 
 class CartItemUpdate(BaseModel):
     quantity: int = Field(..., ge=1, description="Updated quantity (must be at least 1)")
+    size: Optional[str] = Field(None, max_length=50, description="Updated size (optional)")
 
 
 class CartProductSnapshot(BaseModel):
@@ -55,6 +57,7 @@ class CartItemResponse(BaseModel):
     id: UUID
     product: CartProductSnapshot
     quantity: int
+    size: Optional[str] = None
     subtotal: Decimal
     offer_id: Optional[UUID] = None
     unit_price: Optional[Decimal] = None
@@ -105,6 +108,7 @@ class ApplyCouponRequest(BaseModel):
 class BillCartItemInput(BaseModel):
     product_id: UUID = Field(..., description="Product UUID")
     quantity: int = Field(1, ge=1, description="Quantity")
+    size: Optional[str] = Field(None, max_length=50, description="Selected size (optional)")
 
 
 class BillItemDetail(BaseModel):
@@ -112,6 +116,7 @@ class BillItemDetail(BaseModel):
     product_name: str
     product_image_url: Optional[str] = None
     quantity: int
+    size: Optional[str] = None
     original_unit_price: Decimal
     product_discount_unit: Decimal = Decimal("0.00")
     final_unit_price: Decimal
