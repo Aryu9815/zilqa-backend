@@ -305,10 +305,10 @@ CREATE TABLE IF NOT EXISTS admins (
 );
 
 CREATE TABLE product_sizes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), 
     category_id UUID REFERENCES categories(id),
     name VARCHAR(50) NOT NULL,
+    country_code VARCHAR(50),
     display_order INTEGER NOT NULL DEFAULT 0,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,

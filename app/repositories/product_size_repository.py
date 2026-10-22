@@ -31,6 +31,7 @@ class ProductSizeRepository:
         self,
         db: AsyncSession,
         category_id: Optional[UUID] = None,
+        country_code: Optional[str] = None,
         is_active_only: bool = True,
         include_deleted: bool = False,
         page: int = 1,
@@ -44,6 +45,12 @@ class ProductSizeRepository:
         if category_id is not None:
             # Match specified category or global sizes without category
             conditions.append(or_(ProductSize.category_id == category_id, ProductSize.category_id.is_(None)))
+        if country_code is not None:
+            cleaned = country_code.strip()
+            if cleaned.lower() in ("none", "null", ""):
+                conditions.append(or_(ProductSize.country_code.is_(None), ProductSize.country_code == ""))
+            else:
+                conditions.append(func.lower(func.trim(ProductSize.country_code)) == cleaned.lower())
 
         count_stmt = select(func.count()).select_from(ProductSize)
         if conditions:
@@ -61,10 +68,38 @@ class ProductSizeRepository:
         result = await db.execute(stmt)
         return list(result.scalars().all()), total
 
+    async def get_available_countries(
+        self,
+        db: AsyncSession,
+        category_id: Optional[UUID] = None,
+        is_active_only: bool = True,
+        include_deleted: bool = False,
+    ) -> List[str]:
+        conditions = [
+            ProductSize.country_code.isnot(None),
+            ProductSize.country_code != "",
+        ]
+        if not include_deleted:
+            conditions.append(ProductSize.is_deleted == False)
+        if is_active_only:
+            conditions.append(ProductSize.is_active == True)
+        if category_id is not None:
+            conditions.append(or_(ProductSize.category_id == category_id, ProductSize.category_id.is_(None)))
+
+        stmt = (
+            select(func.distinct(ProductSize.country_code))
+            .where(and_(*conditions))
+            .order_by(func.distinct(ProductSize.country_code).asc())
+        )
+        result = await db.execute(stmt)
+        return [r for r in result.scalars().all() if r]
+
     async def create(self, db: AsyncSession, size_in: ProductSizeCreate) -> ProductSize:
+        code = size_in.country_code.strip().upper() if size_in.country_code else None
         product_size = ProductSize(
             name=size_in.name.strip(),
             category_id=size_in.category_id,
+            country_code=code,
             display_order=size_in.display_order if size_in.display_order is not None else 0,
             is_active=size_in.is_active if size_in.is_active is not None else True,
         )
@@ -90,6 +125,8 @@ class ProductSizeRepository:
             product_size.name = size_in.name.strip()
         if size_in.category_id is not None:
             product_size.category_id = size_in.category_id
+        if size_in.country_code is not None:
+            product_size.country_code = size_in.country_code.strip().upper() if size_in.country_code else None
         if size_in.display_order is not None:
             product_size.display_order = size_in.display_order
         if size_in.is_active is not None:

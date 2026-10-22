@@ -12,6 +12,7 @@ class ProductSize(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, server_default=func.gen_random_uuid())
     category_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
+    country_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")

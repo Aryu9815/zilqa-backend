@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Any
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,13 +6,18 @@ from app.core.exceptions import BadRequestException, NotFoundException
 from app.repositories.category_repository import category_repository
 from app.repositories.product_size_repository import product_size_repository
 from app.schemas.common import PaginatedResponse
-from app.schemas.product_size import ProductSizeCreate, ProductSizeResponse, ProductSizeUpdate
+from app.schemas.product_size import (
+    ProductSizeCreate,
+    ProductSizeResponse,
+    ProductSizesFlowResponse,
+    ProductSizeUpdate,
+)
 from app.utils.helpers import calculate_pagination
 
 
 class ProductSizeService:
 
-    def _to_response(self, size: any) -> ProductSizeResponse:
+    def _to_response(self, size: Any) -> ProductSizeResponse:
         cat_name = None
         if hasattr(size, "category") and size.category:
             cat_name = getattr(size.category, "name", None)
@@ -21,6 +26,7 @@ class ProductSizeService:
             "id": size.id,
             "name": size.name,
             "category_id": size.category_id,
+            "country_code": getattr(size, "country_code", None),
             "display_order": size.display_order,
             "is_active": size.is_active,
             "is_deleted": size.is_deleted,
@@ -34,6 +40,7 @@ class ProductSizeService:
         self,
         db: AsyncSession,
         category_id: Optional[UUID] = None,
+        country_code: Optional[str] = None,
         is_active: Optional[bool] = None,
         page: int = 1,
         limit: int = 100,
@@ -42,6 +49,7 @@ class ProductSizeService:
         records, total = await product_size_repository.list_sizes(
             db=db,
             category_id=category_id,
+            country_code=country_code,
             is_active_only=is_active_only,
             include_deleted=False,
             page=page,
@@ -50,6 +58,83 @@ class ProductSizeService:
         items = [self._to_response(r) for r in records]
         pagination = calculate_pagination(total=total, page=page, limit=limit)
         return PaginatedResponse(data=items, pagination=pagination)
+
+    async def get_available_countries(
+        self,
+        db: AsyncSession,
+        category_id: Optional[UUID] = None,
+        is_active: Optional[bool] = True,
+    ) -> List[str]:
+        is_active_only = is_active if is_active is not None else False
+        return await product_size_repository.get_available_countries(
+            db=db,
+            category_id=category_id,
+            is_active_only=is_active_only,
+            include_deleted=False,
+        )
+
+    async def get_sizes_flow(
+        self,
+        db: AsyncSession,
+        category_id: Optional[UUID] = None,
+        country_code: Optional[str] = None,
+        is_active: Optional[bool] = True,
+    ) -> ProductSizesFlowResponse:
+        """
+        Flow logic:
+        Category -> sizes if country code is not available,
+        if available then it becomes Category -> country_code -> sizes.
+        """
+        is_active_only = is_active if is_active is not None else False
+
+        # 1. Fetch available countries for this category
+        available_countries = await product_size_repository.get_available_countries(
+            db=db,
+            category_id=category_id,
+            is_active_only=is_active_only,
+            include_deleted=False,
+        )
+
+        has_country_codes = len(available_countries) > 0
+        selected_code = None
+
+        if has_country_codes:
+            if country_code:
+                norm_requested = country_code.strip().upper()
+                matching = next((c for c in available_countries if c.upper() == norm_requested), None)
+                selected_code = matching or norm_requested
+            else:
+                # Default to the first available country code
+                selected_code = available_countries[0]
+
+            records, _ = await product_size_repository.list_sizes(
+                db=db,
+                category_id=category_id,
+                country_code=selected_code,
+                is_active_only=is_active_only,
+                include_deleted=False,
+                page=1,
+                limit=100,
+            )
+        else:
+            # No country codes available for this category -> category directly to sizes
+            records, _ = await product_size_repository.list_sizes(
+                db=db,
+                category_id=category_id,
+                country_code=None,
+                is_active_only=is_active_only,
+                include_deleted=False,
+                page=1,
+                limit=100,
+            )
+
+        sizes = [self._to_response(r) for r in records]
+        return ProductSizesFlowResponse(
+            has_country_codes=has_country_codes,
+            available_countries=available_countries,
+            selected_country_code=selected_code,
+            sizes=sizes,
+        )
 
     async def get_size(self, db: AsyncSession, size_id: UUID) -> ProductSizeResponse:
         record = await product_size_repository.get_by_id(db, size_id, include_deleted=False)

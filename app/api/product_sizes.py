@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,7 +7,12 @@ from app.core.dependencies import require_admin
 from app.db.database import get_db
 from app.models.admin import Admin
 from app.schemas.common import PaginatedResponse, ResponseEnvelope
-from app.schemas.product_size import ProductSizeCreate, ProductSizeResponse, ProductSizeUpdate
+from app.schemas.product_size import (
+    ProductSizeCreate,
+    ProductSizeResponse,
+    ProductSizesFlowResponse,
+    ProductSizeUpdate,
+)
 from app.services.product_size_service import product_size_service
 
 public_router = APIRouter(prefix="/product-sizes", tags=["Product Sizes"])
@@ -21,10 +26,11 @@ admin_router = APIRouter(prefix="/admin/product-sizes", tags=["Product Sizes"])
 @public_router.get(
     "",
     response_model=PaginatedResponse[ProductSizeResponse],
-    summary="List product sizes (Public)"
+    summary="List product sizes with optional category and country filter (Public)"
 )
 async def list_product_sizes(
     category_id: Optional[UUID] = Query(None, description="Filter by Category UUID"),
+    country_code: Optional[str] = Query(None, description="Filter by Country Code (e.g. IN, US, UK)"),
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(100, ge=1, le=100, description="Items per page"),
     db: AsyncSession = Depends(get_db)
@@ -32,9 +38,54 @@ async def list_product_sizes(
     return await product_size_service.list_sizes(
         db,
         category_id=category_id,
+        country_code=country_code,
         is_active=True,
         page=page,
         limit=limit
+    )
+
+
+@public_router.get(
+    "/countries",
+    response_model=ResponseEnvelope[List[str]],
+    summary="Get available country codes for product sizes (Public)"
+)
+async def get_product_size_countries(
+    category_id: Optional[UUID] = Query(None, description="Filter by Category UUID"),
+    db: AsyncSession = Depends(get_db)
+) -> ResponseEnvelope[List[str]]:
+    countries = await product_size_service.get_available_countries(
+        db,
+        category_id=category_id,
+        is_active=True
+    )
+    return ResponseEnvelope(
+        success=True,
+        message="Available country codes retrieved successfully",
+        data=countries
+    )
+
+
+@public_router.get(
+    "/flow",
+    response_model=ResponseEnvelope[ProductSizesFlowResponse],
+    summary="Get sizes following the category -> country_code -> sizes flow (Public)"
+)
+async def get_product_sizes_flow(
+    category_id: Optional[UUID] = Query(None, description="Filter by Category UUID"),
+    country_code: Optional[str] = Query(None, description="Optional Country Code"),
+    db: AsyncSession = Depends(get_db)
+) -> ResponseEnvelope[ProductSizesFlowResponse]:
+    flow_data = await product_size_service.get_sizes_flow(
+        db,
+        category_id=category_id,
+        country_code=country_code,
+        is_active=True
+    )
+    return ResponseEnvelope(
+        success=True,
+        message="Product sizes flow data retrieved successfully",
+        data=flow_data
     )
 
 
@@ -62,10 +113,11 @@ async def get_product_size(
 @admin_router.get(
     "",
     response_model=PaginatedResponse[ProductSizeResponse],
-    summary="List all product sizes including inactive (Admin only)"
+    summary="List all product sizes including inactive with optional filters (Admin only)"
 )
 async def admin_list_product_sizes(
     category_id: Optional[UUID] = Query(None, description="Filter by Category UUID"),
+    country_code: Optional[str] = Query(None, description="Filter by Country Code"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(100, ge=1, le=100, description="Items per page"),
@@ -75,9 +127,58 @@ async def admin_list_product_sizes(
     return await product_size_service.list_sizes(
         db,
         category_id=category_id,
+        country_code=country_code,
         is_active=is_active,
         page=page,
         limit=limit
+    )
+
+
+@admin_router.get(
+    "/countries",
+    response_model=ResponseEnvelope[List[str]],
+    summary="Get available country codes for product sizes (Admin only)"
+)
+async def admin_get_product_size_countries(
+    category_id: Optional[UUID] = Query(None, description="Filter by Category UUID"),
+    is_active: Optional[bool] = Query(None, description="Filter by active status"),
+    current_admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+) -> ResponseEnvelope[List[str]]:
+    countries = await product_size_service.get_available_countries(
+        db,
+        category_id=category_id,
+        is_active=is_active
+    )
+    return ResponseEnvelope(
+        success=True,
+        message="Available country codes retrieved successfully",
+        data=countries
+    )
+
+
+@admin_router.get(
+    "/flow",
+    response_model=ResponseEnvelope[ProductSizesFlowResponse],
+    summary="Get sizes following category -> country_code -> sizes flow (Admin only)"
+)
+async def admin_get_product_sizes_flow(
+    category_id: Optional[UUID] = Query(None, description="Filter by Category UUID"),
+    country_code: Optional[str] = Query(None, description="Optional Country Code"),
+    is_active: Optional[bool] = Query(None, description="Filter by active status"),
+    current_admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+) -> ResponseEnvelope[ProductSizesFlowResponse]:
+    flow_data = await product_size_service.get_sizes_flow(
+        db,
+        category_id=category_id,
+        country_code=country_code,
+        is_active=is_active
+    )
+    return ResponseEnvelope(
+        success=True,
+        message="Product sizes flow data retrieved successfully",
+        data=flow_data
     )
 
 

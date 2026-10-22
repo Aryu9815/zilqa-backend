@@ -60,3 +60,6 @@ insert_products.sql
 .mypy_cache/
 uploads/
 images-data.txt
+tests/
+scripts/
+migrations/

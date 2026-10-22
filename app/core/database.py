@@ -21,7 +21,7 @@ async def init_db_pool() -> asyncpg.Pool:
             max_size=settings.DB_POOL_MAX_SIZE,
             max_inactive_connection_lifetime=settings.DB_POOL_MAX_INACTIVE_CONNECTION_LIFETIME,
             timeout=settings.DB_POOL_TIMEOUT,
-            ssl="require",
+            # ssl="require",
         )
         logger.info("asyncpg connection pool initialized successfully.")
         try:
@@ -35,6 +35,20 @@ async def init_db_pool() -> asyncpg.Pool:
 
                     ALTER TABLE products ADD COLUMN IF NOT EXISTS variants JSONB NOT NULL DEFAULT '[]'::jsonb;
                     ALTER TABLE products ADD COLUMN IF NOT EXISTS variant_name VARCHAR(255) NOT NULL DEFAULT '';
+
+                    CREATE TABLE IF NOT EXISTS product_sizes (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
+                        name VARCHAR(50) NOT NULL,
+                        country_code VARCHAR(50),
+                        display_order INTEGER NOT NULL DEFAULT 0,
+                        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                        is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+                        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
+                    );
+                    ALTER TABLE product_sizes ADD COLUMN IF NOT EXISTS country_code VARCHAR(50);
+                    CREATE INDEX IF NOT EXISTS idx_product_sizes_country_code ON product_sizes(country_code);
                 """)
         except Exception as e:
             logger.warning("Could not execute schema migrations in init_db_pool: %s", e)
