@@ -216,9 +216,9 @@ class CartService:
         shipping_amount = Decimal(str(cart_record["shipping_amount"] or "0.00"))
         total_amount = Decimal(str(cart_record["total_amount"] or "0.00"))
 
-        user = await user_repository.get_by_id(user_id)
-        user_country_code = user["country_code"].strip().upper() if user and user.get("country_code") else None
-        currency = get_currency_for_country(user_country_code)
+        currency, _, user_country_code, _, _ = await get_user_currency_and_rate(
+            user_id, user_repository, country_repository, db=db
+        )
 
         return CartResponse(
             id=cart_id,

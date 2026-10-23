@@ -372,24 +372,26 @@ async def get_user_currency_and_rate(
     """
     Returns (currency, exchange_rate, country_code, country_name, exchange_available)
     by looking up user's saved country_code in the user table.
+    If that code and exchange rate are available in the countries table, returns that;
+    otherwise defaults to US only (USD, 1.0, US, United States, True).
     """
     user_country_code = None
     if user_id:
-        user = await user_repository.get_by_id(user_id)
-        if user and user.get("country_code"):
-            user_country_code = user["country_code"].strip().upper()
+        if isinstance(user_id, str) and len(user_id.strip()) in (2, 3) and user_id.strip().isalpha():
+            user_country_code = user_id.strip().upper()
+        else:
+            try:
+                user = await user_repository.get_by_id(user_id)
+                if user and user.get("country_code"):
+                    user_country_code = user["country_code"].strip().upper()
+            except Exception:
+                user_country_code = None
 
-    if not user_country_code:
-        user_country_code = "US"
+    if not user_country_code or user_country_code == "US":
+        return "USD", Decimal("1.0"), "US", "United States", True
 
     currency = get_currency_for_country(user_country_code)
     country_name = get_country_name_for_code(user_country_code)
-
-    if user_country_code == "US" or currency == "USD":
-        return "USD", Decimal("1.0"), "US", "United States", True
-
-    exchange_available = False
-    rate = Decimal("1.0")
 
     country_record = None
     if db is not None:
@@ -411,22 +413,28 @@ async def get_user_currency_and_rate(
                 country_name = str(country_record["name"])
             db_rate = country_record.get("rate_from_usd")
             is_avail = bool(country_record.get("exchange_available", False))
+            is_active = bool(country_record.get("is_active", True))
+            is_deleted = bool(country_record.get("is_deleted", False))
         else:
             name_val = getattr(country_record, "name", None)
             if name_val:
                 country_name = str(name_val)
             db_rate = getattr(country_record, "rate_from_usd", None)
             is_avail = bool(getattr(country_record, "exchange_available", False))
+            is_active = bool(getattr(country_record, "is_active", True))
+            is_deleted = bool(getattr(country_record, "is_deleted", False))
 
-        if db_rate is not None and Decimal(str(db_rate)) > Decimal("0.00"):
+        if (
+            is_avail
+            and is_active
+            and not is_deleted
+            and db_rate is not None
+            and Decimal(str(db_rate)) > Decimal("0.00")
+        ):
             rate = Decimal(str(db_rate))
-            exchange_available = is_avail
-        else:
-            rate = DEFAULT_EXCHANGE_RATES.get(currency, Decimal("1.0"))
-            exchange_available = is_avail
-    else:
-        rate = DEFAULT_EXCHANGE_RATES.get(currency, Decimal("1.0"))
+            return currency, rate, user_country_code, country_name, True
 
-    return currency, rate, user_country_code, country_name, exchange_available
+    # If code is not found in countries table, or exchange rate is not available, return US only
+    return "USD", Decimal("1.0"), "US", "United States", True
 
 
