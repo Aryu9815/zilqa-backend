@@ -33,7 +33,8 @@ class CartService:
     async def _refresh_and_persist_cart_state(
         self,
         cart_id: UUID,
-        user_id: UUID
+        user_id: UUID,
+        db: Optional[AsyncSession] = None
     ) -> Any:
         """
         Evaluates active offers on all cart items, synchronizes offer details and total_price
@@ -41,7 +42,7 @@ class CartService:
         and grand totals, and persists them into the carts table.
         """
         currency, rate, country_code, country_name, exchange_available = await get_user_currency_and_rate(
-            user_id, user_repository, country_repository
+            user_id, user_repository, country_repository, db=db
         )
         active_offers = await offer_repository.get_active_offers()
         items_records = await cart_repository.get_cart_items_with_products(cart_id)
@@ -142,12 +143,12 @@ class CartService:
         )
         return updated_cart
 
-    async def get_user_cart(self, user_id: UUID) -> CartResponse:
+    async def get_user_cart(self, user_id: UUID, db: Optional[AsyncSession] = None) -> CartResponse:
         cart_record = await cart_repository.get_or_create_cart(user_id)
         cart_id = cart_record["id"]
 
         # Refresh state and persist calculations to both carts and cart_items
-        cart_record = await self._refresh_and_persist_cart_state(cart_id, user_id)
+        cart_record = await self._refresh_and_persist_cart_state(cart_id, user_id, db=db)
         items_records = await cart_repository.get_cart_items_with_products(cart_id)
 
         cart_items: List[CartItemResponse] = []
@@ -290,8 +291,8 @@ class CartService:
         )
 
         # Recalculate totals and persist to carts table
-        await self._refresh_and_persist_cart_state(cart_id, user_id)
-        return await self.get_user_cart(user_id)
+        await self._refresh_and_persist_cart_state(cart_id, user_id, db=db)
+        return await self.get_user_cart(user_id, db=db)
 
     async def update_cart_item(
         self,
@@ -378,10 +379,10 @@ class CartService:
                 total_price=item_total
             )
 
-        await self._refresh_and_persist_cart_state(cart_id, user_id)
-        return await self.get_user_cart(user_id)
+        await self._refresh_and_persist_cart_state(cart_id, user_id, db=db)
+        return await self.get_user_cart(user_id, db=db)
 
-    async def remove_cart_item(self, user_id: UUID, item_id: UUID) -> CartResponse:
+    async def remove_cart_item(self, user_id: UUID, item_id: UUID, db: Optional[AsyncSession] = None) -> CartResponse:
         cart_record = await cart_repository.get_cart_by_user(user_id)
         if not cart_record:
             raise NotFoundException(message="Cart not found", error_code="CART_NOT_FOUND")
@@ -391,15 +392,15 @@ class CartService:
         if not deleted:
             raise NotFoundException(message="Cart item not found", error_code="CART_ITEM_NOT_FOUND")
 
-        await self._refresh_and_persist_cart_state(cart_id, user_id)
-        return await self.get_user_cart(user_id)
+        await self._refresh_and_persist_cart_state(cart_id, user_id, db=db)
+        return await self.get_user_cart(user_id, db=db)
 
-    async def clear_cart(self, user_id: UUID) -> CartResponse:
+    async def clear_cart(self, user_id: UUID, db: Optional[AsyncSession] = None) -> CartResponse:
         cart_record = await cart_repository.get_or_create_cart(user_id)
         await cart_repository.clear_cart(cart_record["id"])
-        return await self.get_user_cart(user_id)
+        return await self.get_user_cart(user_id, db=db)
 
-    async def apply_coupon(self, user_id: UUID, coupon_code: str) -> CartResponse:
+    async def apply_coupon(self, user_id: UUID, coupon_code: str, db: Optional[AsyncSession] = None) -> CartResponse:
         """
         Validates coupon code, persists it to the carts table, and recomputes all totals.
         """
@@ -415,7 +416,7 @@ class CartService:
             )
 
         # Refresh item offers to get accurate current net items amount
-        await self._refresh_and_persist_cart_state(cart_id, user_id)
+        await self._refresh_and_persist_cart_state(cart_id, user_id, db=db)
         items_records = await cart_repository.get_cart_items_with_products(cart_id)
         net_items_amount = sum(Decimal(str(r["total_price"])) for r in items_records)
 
@@ -441,10 +442,10 @@ class CartService:
             coupon_discount_amount=coupon_res.discount_amount
         )
 
-        await self._refresh_and_persist_cart_state(cart_id, user_id)
-        return await self.get_user_cart(user_id)
+        await self._refresh_and_persist_cart_state(cart_id, user_id, db=db)
+        return await self.get_user_cart(user_id, db=db)
 
-    async def remove_coupon(self, user_id: UUID) -> CartResponse:
+    async def remove_coupon(self, user_id: UUID, db: Optional[AsyncSession] = None) -> CartResponse:
         """
         Removes applied coupon from the cart and recomputes totals.
         """
@@ -461,8 +462,8 @@ class CartService:
             coupon_discount_amount=Decimal("0.00")
         )
 
-        await self._refresh_and_persist_cart_state(cart_id, user_id)
-        return await self.get_user_cart(user_id)
+        await self._refresh_and_persist_cart_state(cart_id, user_id, db=db)
+        return await self.get_user_cart(user_id, db=db)
 
     async def calculate_live_bill(
         self,
@@ -483,7 +484,7 @@ class CartService:
 
         # Determine user country data and exchange rate from user table if user_id is provided
         currency, rate, user_country_code, user_country_name, exchange_available = await get_user_currency_and_rate(
-            user_id, user_repository, country_repository
+            user_id, user_repository, country_repository, db=db
         )
 
         # Determine coupon code to evaluate

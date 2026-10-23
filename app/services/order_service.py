@@ -108,6 +108,7 @@ class OrderService:
         """Loads user cart items and evaluates all active product discounts, coupon codes, and shipping."""
         cart_record = await cart_repository.get_or_create_cart(user_id)
         cart_id = cart_record["id"]
+        req_coupon_code = coupon_code
         if not coupon_code and cart_record.get("coupon_code"):
             coupon_code = cart_record["coupon_code"]
         cart_items_records = await cart_repository.get_cart_items_with_products(cart_id)
@@ -138,7 +139,7 @@ class OrderService:
         product_discount_total = Decimal("0.00")
 
         currency, rate, user_country_code, user_country_name, exchange_available = await get_user_currency_and_rate(
-            user_id, user_repository, country_repository
+            user_id, user_repository, country_repository, db=db
         )
 
         for item in cart_items_records:
@@ -193,21 +194,23 @@ class OrderService:
         coupon_offer_obj = None
         if coupon_code:
             eligible_base = max(Decimal("0.00"), subtotal - product_discount_total)
-            base_subtotal = round_money(eligible_base / rate) if rate > 0 else eligible_base
             coupon_res = await offer_service.validate_and_calculate_coupon(
                 coupon_code=coupon_code,
                 user_id=user_id,
-                cart_subtotal=base_subtotal
+                cart_subtotal=eligible_base
             )
-            if not coupon_res.is_valid:
-                raise BadRequestException(
-                    message=coupon_res.message,
-                    error_code="INVALID_COUPON"
-                )
-            coupon_discount = round_money(coupon_res.discount_amount * rate)
-            if coupon_res.offer:
-                applied_coupon_offer_id = coupon_res.offer.id
-                coupon_offer_obj = coupon_res.offer
+            if coupon_res.is_valid:
+                coupon_discount = coupon_res.discount_amount
+                if coupon_res.offer:
+                    applied_coupon_offer_id = coupon_res.offer.id
+                    coupon_offer_obj = coupon_res.offer
+            else:
+                if req_coupon_code:
+                    raise BadRequestException(
+                        message=coupon_res.message,
+                        error_code="INVALID_COUPON"
+                    )
+                coupon_code = None
 
         free_delivery_threshold = round_money(Decimal("150.00") * rate)
         standard_delivery_fee = round_money(Decimal("15.00") * rate)
@@ -218,7 +221,7 @@ class OrderService:
         else:
             shipping_amount = standard_delivery_fee
 
-        total_discount = min(subtotal, product_discount_total + coupon_discount)
+        total_discount = round_money(min(subtotal, product_discount_total + coupon_discount))
         total_amount = round_money(max(Decimal("0.00"), subtotal - total_discount + shipping_amount))
 
         return {
@@ -274,7 +277,7 @@ class OrderService:
             discount_amount=pricing["total_discount"],
             shipping_amount=pricing["shipping_amount"],
             total_amount=pricing["total_amount"],
-            coupon_code=req.coupon_code
+            coupon_code=pricing.get("coupon_code")
         )
 
     async def verify_and_complete_order(
@@ -325,7 +328,7 @@ class OrderService:
                 total_amount=pricing["total_amount"],
                 shipping_address=resolved_addr,
                 currency=currency,
-                coupon_code=req.coupon_code,
+                coupon_code=pricing.get("coupon_code"),
                 razorpay_order_id=req.razorpay_order_id,
                 razorpay_payment_id=req.razorpay_payment_id,
                 razorpay_signature=req.razorpay_signature,
@@ -415,7 +418,7 @@ class OrderService:
                 total_amount=pricing["total_amount"],
                 shipping_address=resolved_addr,
                 currency=currency,
-                coupon_code=order_in.coupon_code,
+                coupon_code=pricing.get("coupon_code"),
                 razorpay_order_id=order_in.razorpay_order_id,
                 razorpay_payment_id=order_in.razorpay_payment_id,
                 razorpay_signature=order_in.razorpay_signature,

@@ -44,9 +44,10 @@ async def calculate_bill(
     summary="Get current user shopping cart"
 )
 async def get_cart(
-    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[CartResponse]:
-    cart = await cart_service.get_user_cart(current_user["id"])
+    cart = await cart_service.get_user_cart(current_user["id"], db=db)
     return ResponseEnvelope(
         success=True,
         message="Cart retrieved successfully",
@@ -111,11 +112,13 @@ async def update_cart_item(
 )
 async def remove_cart_item(
     item_id: UUID,
-    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[CartResponse]:
     cart = await cart_service.remove_cart_item(
         user_id=current_user["id"],
-        item_id=item_id
+        item_id=item_id,
+        db=db
     )
     return ResponseEnvelope(
         success=True,
@@ -130,9 +133,10 @@ async def remove_cart_item(
     summary="Clear entire cart"
 )
 async def clear_cart(
-    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[CartResponse]:
-    cart = await cart_service.clear_cart(current_user["id"])
+    cart = await cart_service.clear_cart(current_user["id"], db=db)
     return ResponseEnvelope(
         success=True,
         message="Cart cleared successfully",
@@ -147,11 +151,13 @@ async def clear_cart(
 )
 async def apply_coupon(
     req: ApplyCouponRequest,
-    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[CartResponse]:
     cart = await cart_service.apply_coupon(
         user_id=current_user["id"],
-        coupon_code=req.coupon_code
+        coupon_code=req.coupon_code,
+        db=db
     )
     return ResponseEnvelope(
         success=True,
@@ -178,9 +184,10 @@ async def apply_coupon_alias(
     summary="Remove applied coupon from cart"
 )
 async def remove_coupon(
-    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[CartResponse]:
-    cart = await cart_service.remove_coupon(user_id=current_user["id"])
+    cart = await cart_service.remove_coupon(user_id=current_user["id"], db=db)
     return ResponseEnvelope(
         success=True,
         message="Coupon removed from cart successfully",
@@ -194,6 +201,7 @@ async def remove_coupon(
     summary="Remove applied coupon from cart (alias)"
 )
 async def remove_coupon_alias(
-    current_user: Dict[str, Any] = Depends(require_authenticated_user)
+    current_user: Dict[str, Any] = Depends(require_authenticated_user),
+    db: AsyncSession = Depends(get_db)
 ) -> ResponseEnvelope[CartResponse]:
-    return await remove_coupon(current_user=current_user)
+    return await remove_coupon(current_user=current_user, db=db)

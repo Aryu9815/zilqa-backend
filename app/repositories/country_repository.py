@@ -1,3 +1,4 @@
+from sqlalchemy.dialects.postgresql import Any
 from typing import List, Optional, Tuple
 from uuid import UUID
 from sqlalchemy import select, func, and_
@@ -46,6 +47,27 @@ class CountryRepository:
         return result.scalar_one_or_none()
 
     async def get_by_code(
+        self,
+        db_or_code: Any,
+        code: Optional[str] = None,
+        exclude_id: Optional[UUID] = None,
+        include_deleted: bool = False,
+    ) -> Optional[Country]:
+        if isinstance(db_or_code, str) and code is None:
+            actual_code = db_or_code
+            from app.db.database import AsyncSessionLocal
+            async with AsyncSessionLocal() as session:
+                return await self._get_by_code_impl(session, actual_code, exclude_id, include_deleted)
+        else:
+            db = db_or_code
+            actual_code = code if code is not None else ""
+            if db is None:
+                from app.db.database import AsyncSessionLocal
+                async with AsyncSessionLocal() as session:
+                    return await self._get_by_code_impl(session, actual_code, exclude_id, include_deleted)
+            return await self._get_by_code_impl(db, actual_code, exclude_id, include_deleted)
+
+    async def _get_by_code_impl(
         self,
         db: AsyncSession,
         code: str,

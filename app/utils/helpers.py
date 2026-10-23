@@ -367,6 +367,7 @@ async def get_user_currency_and_rate(
     user_id: Optional[Any],
     user_repository: Any,
     country_repository: Any,
+    db: Optional[Any] = None,
 ) -> Tuple[str, Decimal, str, str, bool]:
     """
     Returns (currency, exchange_rate, country_code, country_name, exchange_available)
@@ -390,12 +391,33 @@ async def get_user_currency_and_rate(
     exchange_available = False
     rate = Decimal("1.0")
 
-    country_record = await country_repository.get_by_code(user_country_code)
+    country_record = None
+    if db is not None:
+        country_record = await country_repository.get_by_code(db, user_country_code)
+    else:
+        try:
+            from app.db.database import AsyncSessionLocal
+            async with AsyncSessionLocal() as session:
+                country_record = await country_repository.get_by_code(session, user_country_code)
+        except Exception:
+            try:
+                country_record = await country_repository.get_by_code(user_country_code)
+            except Exception:
+                country_record = None
+
     if country_record:
-        if country_record.get("name"):
-            country_name = country_record["name"]
-        db_rate = country_record.get("rate_from_usd")
-        is_avail = bool(country_record.get("exchange_available"))
+        if isinstance(country_record, dict):
+            if country_record.get("name"):
+                country_name = str(country_record["name"])
+            db_rate = country_record.get("rate_from_usd")
+            is_avail = bool(country_record.get("exchange_available", False))
+        else:
+            name_val = getattr(country_record, "name", None)
+            if name_val:
+                country_name = str(name_val)
+            db_rate = getattr(country_record, "rate_from_usd", None)
+            is_avail = bool(getattr(country_record, "exchange_available", False))
+
         if db_rate is not None and Decimal(str(db_rate)) > Decimal("0.00"):
             rate = Decimal(str(db_rate))
             exchange_available = is_avail
