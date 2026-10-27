@@ -10,6 +10,7 @@ from app.schemas.order import (
     OrderResponse,
     OrderStatus,
     OrderStatusUpdate,
+    OrderTrackingEmailRequest,
     PaymentStatus,
     PaymentStatusUpdate,
     RazorpayOrderCreateRequest,
@@ -270,4 +271,81 @@ async def test_api_verify_payment_and_complete_order_endpoint(client, monkeypatc
         assert data["data"]["items"][0]["discount_amount"] == "400.00"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_order_tracking_email_request_schema():
+    order_id = uuid4()
+    req = OrderTrackingEmailRequest(
+        order_id=order_id,
+        tracking_url="https://track.bluedart.com/bds/tracking?ref=12345",
+        courier_name="BlueDart"
+    )
+    assert req.order_id == order_id
+    assert req.tracking_url == "https://track.bluedart.com/bds/tracking?ref=12345"
+    assert req.courier_name == "BlueDart"
+
+    # Missing tracking_url raises ValidationError
+    with pytest.raises(ValidationError):
+        OrderTrackingEmailRequest(order_id=order_id)
+
+
+@pytest.mark.asyncio
+async def test_admin_send_tracking_link_endpoints(monkeypatch):
+    from httpx import ASGITransport, AsyncClient
+    from app.main import app
+    from app.core.dependencies import require_admin
+    from app.services.order_service import order_service
+
+    test_order_id = uuid4()
+    app.dependency_overrides[require_admin] = lambda: {"sub": str(uuid4()), "role": "admin"}
+
+    sent_calls = []
+
+    async def mock_send_order_tracking_link(order_id, tracking_url, courier_name=None):
+        sent_calls.append({"order_id": order_id, "tracking_url": tracking_url, "courier_name": courier_name})
+        return {
+            "order_id": order_id,
+            "customer_email": "customer@example.com",
+            "tracking_url": tracking_url,
+            "courier_name": courier_name,
+            "sent_to": "customer@example.com"
+        }
+
+    monkeypatch.setattr(order_service, "send_order_tracking_link", mock_send_order_tracking_link)
+
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # 1. Test POST /api/v1/admin/orders/send-tracking-link
+            resp1 = await client.post(
+                "/api/v1/admin/orders/send-tracking-link",
+                json={
+                    "order_id": str(test_order_id),
+                    "tracking_url": "https://tracking.carrier.com/123",
+                    "courier_name": "FedEx"
+                }
+            )
+            assert resp1.status_code == 200
+            data1 = resp1.json()
+            assert data1["success"] is True
+            assert data1["data"]["customer_email"] == "customer@example.com"
+            assert data1["data"]["courier_name"] == "FedEx"
+
+            # 2. Test POST /api/v1/admin/orders/{order_id}/send-tracking-link
+            resp2 = await client.post(
+                f"/api/v1/admin/orders/{test_order_id}/send-tracking-link",
+                json={
+                    "tracking_url": "https://tracking.carrier.com/456",
+                    "courier_name": "Delhivery"
+                }
+            )
+            assert resp2.status_code == 200
+            data2 = resp2.json()
+            assert data2["success"] is True
+            assert data2["data"]["courier_name"] == "Delhivery"
+
+            assert len(sent_calls) == 2
+    finally:
+        app.dependency_overrides.clear()
+
 

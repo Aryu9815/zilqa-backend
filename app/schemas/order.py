@@ -152,3 +152,10 @@ class OrderResponse(BaseModel):
         return self
 
     model_config = {"from_attributes": True}
+
+
+class OrderTrackingEmailRequest(BaseModel):
+    order_id: Optional[UUID] = Field(None, description="Order ID (can be supplied in path or request body)")
+    tracking_url: str = Field(..., min_length=1, max_length=2000, description="Delivery tracking URL or order status link")
+    courier_name: Optional[str] = Field(None, max_length=100, description="Optional courier or delivery partner name (e.g. BlueDart, FedEx, Delhivery)")
+

@@ -1,10 +1,14 @@
+import asyncio
 import json
+import logging
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 import asyncpg
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from app.core.config import settings
 from app.core.database import get_transaction
@@ -31,6 +35,7 @@ from app.schemas.order import (
 from app.repositories.user_repository import user_repository
 from app.repositories.country_repository import country_repository
 from app.services.offer_service import offer_service, round_money
+from app.services.email_service import email_service
 from app.utils.helpers import (
     calculate_pagination,
     get_country_name_for_code,
@@ -50,6 +55,28 @@ VALID_STATUS_TRANSITIONS: Dict[str, List[str]] = {
 
 
 class OrderService:
+
+    async def _dispatch_order_confirmation_email(self, order: OrderResponse, user_id: UUID) -> None:
+        """Dispatches an order confirmation email with bill breakdown in the background."""
+        try:
+            customer_email = order.customer.email if order.customer and order.customer.email else None
+            customer_name = order.customer.name if order.customer and order.customer.name else None
+            if not customer_email:
+                user_record = await user_repository.get_by_id(user_id)
+                if user_record:
+                    customer_email = user_record.get("email")
+                    customer_name = customer_name or user_record.get("name")
+
+            if customer_email:
+                asyncio.create_task(
+                    email_service.send_order_confirmation_email(
+                        to_email=customer_email,
+                        order=order,
+                        user_name=customer_name
+                    )
+                )
+        except Exception as e:
+            logger.warning("Failed to dispatch order confirmation email for order %s: %s", order.id, e)
 
     async def _resolve_shipping_address(
         self,
@@ -364,7 +391,9 @@ class OrderService:
             # Hard delete cart items from cart
             await cart_repository.clear_cart(cart_id, connection=conn)
 
-        return await self.get_order_details(order_id)
+        order_details = await self.get_order_details(order_id)
+        await self._dispatch_order_confirmation_email(order_details, user_id)
+        return order_details
 
     # =========================================================================
     # GENERAL ORDER CREATION (DIRECT / STANDARD / BACKWARD COMPATIBLE)
@@ -452,7 +481,10 @@ class OrderService:
             # Hard delete cart items from cart
             await cart_repository.clear_cart(cart_id, connection=conn)
 
-        return await self.get_order_details(order_id)
+        order_details = await self.get_order_details(order_id)
+        if order_details.status == OrderStatus.CONFIRMED.value:
+            await self._dispatch_order_confirmation_email(order_details, user_id)
+        return order_details
 
     # =========================================================================
     # ORDER DETAILS & LISTING
@@ -628,7 +660,10 @@ class OrderService:
             )
 
         await order_repository.update_status(order_id, new_status.value)
-        return await self.get_order_details(order_id)
+        updated_order = await self.get_order_details(order_id)
+        if current_status != OrderStatus.CONFIRMED.value and new_status == OrderStatus.CONFIRMED:
+            await self._dispatch_order_confirmation_email(updated_order, updated_order.user_id)
+        return updated_order
 
     async def update_payment_status(self, order_id: UUID, new_payment_status: PaymentStatus) -> OrderResponse:
         current = await order_repository.get_by_id(order_id)
@@ -638,5 +673,49 @@ class OrderService:
         await order_repository.update_payment_status(order_id, new_payment_status.value)
         return await self.get_order_details(order_id)
 
+    async def send_order_tracking_link(
+        self,
+        order_id: UUID,
+        tracking_url: str,
+        courier_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Sends an email with the live order tracking link to the customer.
+        Per requirements, tracking link is not persisted in the database.
+        """
+        order = await self.get_order_details(order_id)
+
+        customer_email = order.customer.email if order.customer and order.customer.email else None
+        customer_name = order.customer.name if order.customer and order.customer.name else None
+
+        if not customer_email and order.user_id:
+            user_record = await user_repository.get_by_id(order.user_id)
+            if user_record:
+                customer_email = user_record.get("email")
+                customer_name = customer_name or user_record.get("name")
+
+        if not customer_email:
+            raise BadRequestException(
+                message=f"No customer email found for order {order_id}",
+                error_code="CUSTOMER_EMAIL_NOT_FOUND"
+            )
+
+        await email_service.send_order_tracking_email(
+            to_email=customer_email,
+            order=order,
+            tracking_url=tracking_url,
+            user_name=customer_name,
+            courier_name=courier_name
+        )
+
+        return {
+            "order_id": order.id,
+            "customer_email": customer_email,
+            "tracking_url": tracking_url,
+            "courier_name": courier_name,
+            "sent_to": customer_email
+        }
+
 
 order_service = OrderService()
+

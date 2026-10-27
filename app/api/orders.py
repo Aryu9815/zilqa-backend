@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import require_admin, require_authenticated_user
+from app.core.exceptions import BadRequestException
 from app.db.database import get_db
 from app.schemas.common import PaginatedResponse, ResponseEnvelope
 from app.schemas.order import (
@@ -12,6 +13,7 @@ from app.schemas.order import (
     OrderResponse,
     OrderStatus,
     OrderStatusUpdate,
+    OrderTrackingEmailRequest,
     PaymentStatus,
     PaymentStatusUpdate,
     RazorpayOrderCreateRequest,
@@ -196,3 +198,52 @@ async def update_payment_status(
         message=f"Payment status updated to {status_in.payment_status.value}",
         data=updated_order
     )
+
+
+@admin_router.post(
+    "/send-tracking-link",
+    response_model=ResponseEnvelope[Dict[str, Any]],
+    summary="Send delivery tracking link to customer email (Admin only)"
+)
+async def send_order_tracking_email(
+    req: OrderTrackingEmailRequest,
+    current_admin: Dict[str, Any] = Depends(require_admin)
+) -> ResponseEnvelope[Dict[str, Any]]:
+    if not req.order_id:
+        raise BadRequestException(
+            message="order_id is required in request body",
+            error_code="ORDER_ID_REQUIRED"
+        )
+    result = await order_service.send_order_tracking_link(
+        order_id=req.order_id,
+        tracking_url=req.tracking_url,
+        courier_name=req.courier_name
+    )
+    return ResponseEnvelope(
+        success=True,
+        message="Delivery tracking email sent successfully to customer",
+        data=result
+    )
+
+
+@admin_router.post(
+    "/{order_id}/send-tracking-link",
+    response_model=ResponseEnvelope[Dict[str, Any]],
+    summary="Send delivery tracking link to customer email for a specific order (Admin only)"
+)
+async def send_order_tracking_email_by_id(
+    order_id: UUID,
+    req: OrderTrackingEmailRequest,
+    current_admin: Dict[str, Any] = Depends(require_admin)
+) -> ResponseEnvelope[Dict[str, Any]]:
+    result = await order_service.send_order_tracking_link(
+        order_id=order_id,
+        tracking_url=req.tracking_url,
+        courier_name=req.courier_name
+    )
+    return ResponseEnvelope(
+        success=True,
+        message="Delivery tracking email sent successfully to customer",
+        data=result
+    )
+
