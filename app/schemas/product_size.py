@@ -55,3 +55,6 @@ class ProductSizesFlowResponse(BaseModel):
     available_countries: List[str] = Field(default_factory=list, description="Available country codes for this category")
     selected_country_code: Optional[str] = Field(None, description="Active or requested country code")
     sizes: List[ProductSizeResponse] = Field(default_factory=list, description="Resolved list of sizes")
+
+class GetProductSizes(BaseModel):
+    category_ids: List[UUID] = Field(..., description="Category UUIDs")

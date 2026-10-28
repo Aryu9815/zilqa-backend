@@ -26,6 +26,14 @@ class ProductSizeRepository:
         stmt = select(ProductSize).options(selectinload(ProductSize.category)).where(and_(*conditions))
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
+    
+    async def get_unique_categories(
+        self,
+        db: AsyncSession,
+    ):
+        stmt = select(func.distinct(ProductSize.category_id)).where(ProductSize.is_deleted == False, ProductSize.is_active == True)
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
 
     async def list_sizes(
         self,

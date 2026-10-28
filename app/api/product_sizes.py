@@ -1,3 +1,4 @@
+from app.schemas.product_size import GetProductSizes
 from typing import Any, List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
@@ -42,6 +43,20 @@ async def list_product_sizes(
         is_active=True,
         page=page,
         limit=limit
+    )
+
+@public_router.post(
+    "/get-sizes",
+    response_model=PaginatedResponse[ProductSizeResponse],
+    summary="List product sizes with available category"
+)
+async def get_sizes(
+    categories: GetProductSizes,
+    db: AsyncSession = Depends(get_db)
+) -> PaginatedResponse[ProductSizeResponse]:
+    return await product_size_service.get_sizes(
+        db,
+        category_ids=categories.category_ids,
     )
 
 

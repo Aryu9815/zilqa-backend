@@ -58,6 +58,34 @@ class ProductSizeService:
         items = [self._to_response(r) for r in records]
         pagination = calculate_pagination(total=total, page=page, limit=limit)
         return PaginatedResponse(data=items, pagination=pagination)
+    
+    async def get_sizes(
+        self,
+        db: AsyncSession,
+        category_ids: List[UUID],
+    ) -> PaginatedResponse[ProductSizeResponse]:
+
+        size_categories = await product_size_repository.get_unique_categories(db)
+        matching_categories = set(size_categories) & set(category_ids)
+        all_sizes: List[ProductSizeResponse] = []
+        seen_ids = set()
+
+        for cat_id in matching_categories:
+            records, total = await product_size_repository.list_sizes(
+                db=db,
+                category_id=cat_id,
+                is_active_only=True,
+                include_deleted=False,
+                page=1,
+                limit=1000,
+            )
+            for r in records:
+                if r.id not in seen_ids:
+                    seen_ids.add(r.id)
+                    all_sizes.append(self._to_response(r))
+
+        pagination = calculate_pagination(total=len(all_sizes), page=1, limit=max(len(all_sizes), 1))
+        return PaginatedResponse(data=all_sizes, pagination=pagination)
 
     async def get_available_countries(
         self,
