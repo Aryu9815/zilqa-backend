@@ -200,8 +200,11 @@ class CategoryRepository:
 
         from app.services.r2_service import upload_to_r2
         import re
+        import os
         slug = re.sub(r"[^a-zA-Z0-9]+", "-", category.name.strip().lower()).strip("-")
-        ext = file.filename[-4:] if (file.filename and "." in file.filename) else ".webp"
+        ext = os.path.splitext(file.filename or "")[1].lower() if file.filename else ".webp"
+        if not ext:
+            ext = ".webp"
         image_name = f"category-{slug}{ext}"
         image = await upload_to_r2(file=file, image_name=image_name)
         category.image_url = image["path"]

@@ -298,12 +298,15 @@ class ProductRepository:
 
 
 
-    def create_image_name(self,  product_name: str, index: int, extension: str, is_main:bool = False) -> str:
+    def create_image_name(self, product_name: str, index: int, extension: str, is_main: bool = False) -> str:
         slug = re.sub(r"[^a-zA-Z0-9]+", "-", product_name.strip().lower())
         slug = slug.strip("-")
+        ext = extension.strip()
+        if ext and not ext.startswith("."):
+            ext = f".{ext}"
         if is_main:
-            return f"{slug}{extension}"
-        return f"{slug}-{index:03d}{extension}"
+            return f"{slug}{ext}"
+        return f"{slug}-{index:03d}{ext}"
     
     
     async def upload_main_image(self, db: AsyncSession, product_id: UUID, file: UploadFile):
@@ -313,9 +316,25 @@ class ProductRepository:
         if not product:
             return None
 
-        # Upload to R2
-        image = await upload_to_r2(file=file, image_name=self.create_image_name(product.name, 0, file.filename[-4:], is_main=True))
+        # Determine extension properly from filename or content_type
+        ext = os.path.splitext(file.filename or "")[1].lower()
+        if not ext and file.content_type:
+            from app.services.r2_service import ALLOWED_CONTENT_TYPES
+            ext = ALLOWED_CONTENT_TYPES.get(file.content_type, ".webp")
 
+        image_name = self.create_image_name(product.name, 0, ext, is_main=True)
+
+        # Upload to R2
+        image = await upload_to_r2(file=file, image_name=image_name)
+
+        os.makedirs("uploads", exist_ok=True)
+        file_path = os.path.join("uploads", image["filename"])
+        await file.seek(0)
+        with open(file_path, "wb") as buffer:
+            buffer.write(await file.read())
+        local_image = {"path": f"/uploads/{image['filename']}"}
+        print('local image', local_image)
+        print('r2 image', image['path'])
         # Save new URL
         product.main_image_url = image["path"]
 
